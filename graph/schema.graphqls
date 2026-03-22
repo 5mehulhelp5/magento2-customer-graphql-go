@@ -1,0 +1,416 @@
+# Magento 2 Customer GraphQL Schema
+# Go drop-in replacement for Magento's customer-related GraphQL queries and mutations
+
+type Query {
+    """Returns information about the logged-in customer. Requires Authorization header."""
+    customer: Customer
+
+    """Check whether the specified email has already been used to create a customer account."""
+    isEmailAvailable(email: String!): IsEmailAvailableOutput
+}
+
+type Mutation {
+    """Generate a token for a registered customer."""
+    generateCustomerToken(email: String!, password: String!): CustomerToken
+
+    """Revoke the customer token."""
+    revokeCustomerToken: RevokeCustomerTokenOutput
+
+    """Create a new customer account."""
+    createCustomerV2(input: CustomerCreateInput!): CustomerOutput
+
+    """Update the logged-in customer. Requires Authorization header."""
+    updateCustomerV2(input: CustomerUpdateInput!): CustomerOutput
+
+    """Change the password for the logged-in customer."""
+    changeCustomerPassword(currentPassword: String!, newPassword: String!): Customer
+
+    """Update the customer's email address. Requires current password for verification."""
+    updateCustomerEmail(email: String!, password: String!): CustomerOutput
+
+    """Create a new customer address."""
+    createCustomerAddress(input: CustomerAddressInput!): CustomerAddress
+
+    """Update an existing customer address."""
+    updateCustomerAddress(id: Int!, input: CustomerAddressInput!): CustomerAddress
+
+    """Delete a customer address."""
+    deleteCustomerAddress(id: Int!): Boolean
+}
+
+# ─── Output Types ────────────────────────────────────────────────────────────
+
+type Customer {
+    id: ID!
+    firstname: String
+    lastname: String
+    middlename: String
+    prefix: String
+    suffix: String
+    email: String
+    date_of_birth: String
+    taxvat: String
+    gender: Int
+    is_subscribed: Boolean
+    created_at: String
+    default_billing: String
+    default_shipping: String
+    addresses: [CustomerAddress]
+    confirmation_status: ConfirmationStatusEnum!
+    group_id: Int @deprecated(reason: "Use 'group' instead.")
+}
+
+type CustomerAddress {
+    id: Int @deprecated(reason: "Use 'uid' instead.")
+    uid: ID!
+    firstname: String
+    lastname: String
+    middlename: String
+    prefix: String
+    suffix: String
+    company: String
+    street: [String]
+    city: String
+    region: CustomerAddressRegion
+    region_id: Int
+    postcode: String
+    country_code: CountryCodeEnum
+    country_id: String @deprecated(reason: "Use 'country_code' instead.")
+    telephone: String
+    fax: String
+    vat_id: String
+    default_shipping: Boolean
+    default_billing: Boolean
+}
+
+type CustomerAddressRegion {
+    region_code: String
+    region: String
+    region_id: Int
+}
+
+type CustomerToken {
+    token: String
+}
+
+type CustomerOutput {
+    customer: Customer!
+}
+
+type RevokeCustomerTokenOutput {
+    result: Boolean!
+}
+
+type IsEmailAvailableOutput {
+    is_email_available: Boolean
+}
+
+# ─── Input Types ─────────────────────────────────────────────────────────────
+
+input CustomerCreateInput {
+    firstname: String!
+    lastname: String!
+    email: String!
+    password: String!
+    prefix: String
+    middlename: String
+    suffix: String
+    date_of_birth: String
+    taxvat: String
+    gender: Int
+    is_subscribed: Boolean
+}
+
+input CustomerUpdateInput {
+    firstname: String
+    lastname: String
+    middlename: String
+    prefix: String
+    suffix: String
+    date_of_birth: String
+    taxvat: String
+    gender: Int
+    is_subscribed: Boolean
+}
+
+input CustomerAddressInput {
+    firstname: String
+    lastname: String
+    middlename: String
+    prefix: String
+    suffix: String
+    company: String
+    street: [String]
+    city: String
+    region: CustomerAddressRegionInput
+    postcode: String
+    country_code: CountryCodeEnum
+    country_id: CountryCodeEnum @deprecated(reason: "Use 'country_code' instead.")
+    telephone: String
+    fax: String
+    vat_id: String
+    default_shipping: Boolean
+    default_billing: Boolean
+}
+
+input CustomerAddressRegionInput {
+    region_code: String
+    region: String
+    region_id: Int
+}
+
+# ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum ConfirmationStatusEnum {
+    ACCOUNT_CONFIRMED
+    ACCOUNT_CONFIRMATION_NOT_REQUIRED
+}
+
+enum CountryCodeEnum {
+    AF
+    AX
+    AL
+    DZ
+    AS
+    AD
+    AO
+    AI
+    AQ
+    AG
+    AR
+    AM
+    AW
+    AU
+    AT
+    AZ
+    BS
+    BH
+    BD
+    BB
+    BY
+    BE
+    BZ
+    BJ
+    BM
+    BT
+    BO
+    BA
+    BW
+    BV
+    BR
+    IO
+    VG
+    BN
+    BG
+    BF
+    BI
+    KH
+    CM
+    CA
+    CV
+    KY
+    CF
+    TD
+    CL
+    CN
+    CX
+    CC
+    CO
+    KM
+    CG
+    CD
+    CK
+    CR
+    CI
+    HR
+    CU
+    CY
+    CZ
+    DK
+    DJ
+    DM
+    DO
+    EC
+    EG
+    SV
+    GQ
+    ER
+    EE
+    ET
+    FK
+    FO
+    FJ
+    FI
+    FR
+    GF
+    PF
+    TF
+    GA
+    GM
+    GE
+    DE
+    GH
+    GI
+    GR
+    GL
+    GD
+    GP
+    GU
+    GT
+    GG
+    GN
+    GW
+    GY
+    HT
+    HM
+    HN
+    HK
+    HU
+    IS
+    IN
+    ID
+    IR
+    IQ
+    IE
+    IM
+    IL
+    IT
+    JM
+    JP
+    JE
+    JO
+    KZ
+    KE
+    KI
+    KW
+    KG
+    LA
+    LV
+    LB
+    LS
+    LR
+    LY
+    LI
+    LT
+    LU
+    MO
+    MK
+    MG
+    MW
+    MY
+    MV
+    ML
+    MT
+    MH
+    MQ
+    MR
+    MU
+    YT
+    MX
+    FM
+    MD
+    MC
+    MN
+    ME
+    MS
+    MA
+    MZ
+    MM
+    NA
+    NR
+    NP
+    NL
+    AN
+    NC
+    NZ
+    NI
+    NE
+    NG
+    NU
+    NF
+    KP
+    MP
+    NO
+    OM
+    PK
+    PW
+    PS
+    PA
+    PG
+    PY
+    PE
+    PH
+    PN
+    PL
+    PT
+    QA
+    RE
+    RO
+    RU
+    RW
+    WS
+    SM
+    ST
+    SA
+    SN
+    RS
+    SC
+    SL
+    SG
+    SK
+    SI
+    SB
+    SO
+    ZA
+    GS
+    KR
+    ES
+    LK
+    BL
+    SH
+    KN
+    LC
+    MF
+    PM
+    VC
+    SS
+    SD
+    SR
+    SJ
+    SZ
+    SE
+    CH
+    SY
+    TW
+    TJ
+    TZ
+    TH
+    TL
+    TG
+    TK
+    TO
+    TT
+    TN
+    TR
+    TM
+    TC
+    TV
+    UG
+    UA
+    AE
+    GB
+    US
+    UM
+    VI
+    UY
+    UZ
+    VU
+    VA
+    VE
+    VN
+    WF
+    EH
+    YE
+    ZM
+    ZW
+}
