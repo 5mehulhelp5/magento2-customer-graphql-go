@@ -2,10 +2,14 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog/log"
 
@@ -20,6 +24,7 @@ type CustomerService struct {
 	tokenRepo      *repository.TokenRepository
 	newsletterRepo *repository.NewsletterRepository
 	storeRepo      *repository.StoreRepository
+	groupRepo      *repository.GroupRepository
 }
 
 func NewCustomerService(
@@ -28,6 +33,7 @@ func NewCustomerService(
 	tokenRepo *repository.TokenRepository,
 	newsletterRepo *repository.NewsletterRepository,
 	storeRepo *repository.StoreRepository,
+	groupRepo *repository.GroupRepository,
 ) *CustomerService {
 	return &CustomerService{
 		customerRepo:   customerRepo,
@@ -35,6 +41,7 @@ func NewCustomerService(
 		tokenRepo:      tokenRepo,
 		newsletterRepo: newsletterRepo,
 		storeRepo:      storeRepo,
+		groupRepo:      groupRepo,
 	}
 }
 
@@ -405,6 +412,185 @@ func (s *CustomerService) DeleteAddress(ctx context.Context, addressID int) (boo
 	return true, nil
 }
 
+// DeleteCustomer deletes the authenticated customer's account.
+func (s *CustomerService) DeleteCustomer(ctx context.Context) (bool, error) {
+	customerID := middleware.GetCustomerID(ctx)
+	if customerID == 0 {
+		return false, fmt.Errorf("the current customer isn't authorized")
+	}
+
+	s.tokenRepo.RevokeAllForCustomer(ctx, customerID)
+
+	if err := s.customerRepo.Delete(ctx, customerID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// RequestPasswordResetEmail generates a reset token and stores it.
+// Returns true regardless of whether the email exists (prevents enumeration).
+func (s *CustomerService) RequestPasswordResetEmail(ctx context.Context, email string) (bool, error) {
+	storeID := middleware.GetStoreID(ctx)
+	websiteID, _ := s.storeRepo.GetWebsiteIDForStore(ctx, storeID)
+
+	data, err := s.customerRepo.GetByEmail(ctx, email, websiteID)
+	if err != nil {
+		// Don't reveal whether the email exists
+		return true, nil
+	}
+
+	// Generate a random reset token
+	tokenBytes := make([]byte, 32)
+	rand.Read(tokenBytes)
+	rpToken := hex.EncodeToString(tokenBytes)
+
+	err = s.customerRepo.Update(ctx, data.EntityID, map[string]interface{}{
+		"rp_token":            rpToken,
+		"rp_token_created_at": time.Now().UTC().Format("2006-01-02 15:04:05"),
+	})
+	if err != nil {
+		return false, fmt.Errorf("failed to store reset token: %w", err)
+	}
+
+	log.Info().Str("email", email).Str("rp_token", rpToken).Msg("password reset token generated (email sending not implemented)")
+	return true, nil
+}
+
+// ResetPassword validates the reset token and updates the password.
+func (s *CustomerService) ResetPassword(ctx context.Context, email, resetPasswordToken, newPassword string) (bool, error) {
+	storeID := middleware.GetStoreID(ctx)
+	websiteID, _ := s.storeRepo.GetWebsiteIDForStore(ctx, storeID)
+
+	data, err := s.customerRepo.GetByEmail(ctx, email, websiteID)
+	if err != nil {
+		return false, fmt.Errorf("no such entity with email = %s", email)
+	}
+
+	if data.RPToken == nil || *data.RPToken != resetPasswordToken {
+		return false, fmt.Errorf("the password token is mismatched. Reset and try again")
+	}
+
+	// Check token expiry (default: 2 hours)
+	if data.RPTokenCreatedAt != nil {
+		created, err := time.Parse("2006-01-02 15:04:05", *data.RPTokenCreatedAt)
+		if err == nil && time.Since(created) > 2*time.Hour {
+			return false, fmt.Errorf("your password reset link has expired")
+		}
+	}
+
+	hash, err := repository.HashPassword(newPassword)
+	if err != nil {
+		return false, err
+	}
+
+	err = s.customerRepo.Update(ctx, data.EntityID, map[string]interface{}{
+		"password_hash":       hash,
+		"rp_token":            nil,
+		"rp_token_created_at": nil,
+	})
+	if err != nil {
+		return false, err
+	}
+
+	s.tokenRepo.RevokeAllForCustomer(ctx, data.EntityID)
+	return true, nil
+}
+
+// ConfirmEmail confirms a customer's email using a confirmation key.
+func (s *CustomerService) ConfirmEmail(ctx context.Context, input model.ConfirmEmailInput) (*model.CustomerOutput, error) {
+	storeID := middleware.GetStoreID(ctx)
+	websiteID, _ := s.storeRepo.GetWebsiteIDForStore(ctx, storeID)
+
+	data, err := s.customerRepo.GetByEmail(ctx, input.Email, websiteID)
+	if err != nil {
+		return nil, fmt.Errorf("no such entity with email = %s", input.Email)
+	}
+
+	if data.Confirmation == nil || *data.Confirmation != input.ConfirmationKey {
+		return nil, fmt.Errorf("the confirmation token is invalid. Verify the token and try again")
+	}
+
+	err = s.customerRepo.Update(ctx, data.EntityID, map[string]interface{}{
+		"confirmation": nil,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	updated, _ := s.customerRepo.GetByID(ctx, data.EntityID)
+	return &model.CustomerOutput{Customer: s.mapCustomer(updated)}, nil
+}
+
+// ResendConfirmationEmail is a no-op (email sending not implemented).
+func (s *CustomerService) ResendConfirmationEmail(ctx context.Context, email string) (bool, error) {
+	log.Info().Str("email", email).Msg("resend confirmation email requested (email sending not implemented)")
+	return true, nil
+}
+
+// GetCustomerGroup returns the logged-in customer's group.
+func (s *CustomerService) GetCustomerGroup(ctx context.Context) (*model.CustomerGroup, error) {
+	customerID := middleware.GetCustomerID(ctx)
+	if customerID == 0 {
+		// Return NOT LOGGED IN group
+		return s.mapGroup(0)
+	}
+	data, err := s.customerRepo.GetByID(ctx, customerID)
+	if err != nil {
+		return nil, err
+	}
+	return s.mapGroup(data.GroupID)
+}
+
+func (s *CustomerService) mapGroup(groupID int) (*model.CustomerGroup, error) {
+	data, err := s.groupRepo.GetByID(context.Background(), groupID)
+	if err != nil {
+		return nil, err
+	}
+	uid := base64.StdEncoding.EncodeToString([]byte(strconv.Itoa(data.GroupID)))
+	return &model.CustomerGroup{
+		UID:  uid,
+		Name: data.GroupCode,
+	}, nil
+}
+
+// GetAddressesPaginated returns paginated addresses for the authenticated customer.
+func (s *CustomerService) GetAddressesPaginated(ctx context.Context, customerID int, currentPage, pageSize int) (*model.CustomerAddresses, error) {
+	customer, err := s.customerRepo.GetByID(ctx, customerID)
+	if err != nil {
+		return nil, err
+	}
+
+	allAddrs, err := s.addressRepo.GetByCustomerID(ctx, customerID)
+	if err != nil {
+		return nil, err
+	}
+
+	totalCount := len(allAddrs)
+	totalPages := int(math.Ceil(float64(totalCount) / float64(pageSize)))
+
+	start := (currentPage - 1) * pageSize
+	if start > totalCount {
+		start = totalCount
+	}
+	end := start + pageSize
+	if end > totalCount {
+		end = totalCount
+	}
+
+	pageAddrs := allAddrs[start:end]
+	items := s.mapAddresses(pageAddrs, customer.DefaultBilling, customer.DefaultShipping)
+
+	return &model.CustomerAddresses{
+		Items:      items,
+		TotalCount: &totalCount,
+		PageInfo: &model.SearchResultPageInfo{
+			CurrentPage: &currentPage,
+			PageSize:    &pageSize,
+			TotalPages:  &totalPages,
+		},
+	}, nil
+}
+
 // ── Mapping helpers ──────────────────────────────────────────────────────────
 
 func (s *CustomerService) mapCustomer(data *repository.CustomerData) *model.Customer {
@@ -432,6 +618,12 @@ func (s *CustomerService) mapCustomer(data *repository.CustomerData) *model.Cust
 		dob = &d
 	}
 
+	// Resolve customer group
+	var group *model.CustomerGroup
+	if g, err := s.mapGroup(data.GroupID); err == nil {
+		group = g
+	}
+
 	return &model.Customer{
 		ID:                 id,
 		Firstname:          data.Firstname,
@@ -440,6 +632,7 @@ func (s *CustomerService) mapCustomer(data *repository.CustomerData) *model.Cust
 		Prefix:             data.Prefix,
 		Suffix:             data.Suffix,
 		Email:              &data.Email,
+		Dob:                dob,
 		DateOfBirth:        dob,
 		Taxvat:             data.Taxvat,
 		Gender:             data.Gender,
@@ -448,6 +641,7 @@ func (s *CustomerService) mapCustomer(data *repository.CustomerData) *model.Cust
 		DefaultShipping:    defaultShipping,
 		ConfirmationStatus: confirmStatus,
 		GroupID:            &data.GroupID,
+		Group:              group,
 	}
 }
 

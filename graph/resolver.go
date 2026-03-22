@@ -20,9 +20,10 @@ func NewResolver(db *sql.DB) (*Resolver, error) {
 	tokenRepo := repository.NewTokenRepository(db)
 	newsletterRepo := repository.NewNewsletterRepository(db)
 	storeRepo := repository.NewStoreRepository(db)
+	groupRepo := repository.NewGroupRepository(db)
 
 	customerService := service.NewCustomerService(
-		customerRepo, addressRepo, tokenRepo, newsletterRepo, storeRepo,
+		customerRepo, addressRepo, tokenRepo, newsletterRepo, storeRepo, groupRepo,
 	)
 
 	return &Resolver{

@@ -9,6 +9,11 @@ import (
 	"strconv"
 )
 
+type ConfirmEmailInput struct {
+	Email           string `json:"email"`
+	ConfirmationKey string `json:"confirmation_key"`
+}
+
 type Customer struct {
 	ID                 string                 `json:"id"`
 	Firstname          *string                `json:"firstname,omitempty"`
@@ -17,6 +22,7 @@ type Customer struct {
 	Prefix             *string                `json:"prefix,omitempty"`
 	Suffix             *string                `json:"suffix,omitempty"`
 	Email              *string                `json:"email,omitempty"`
+	Dob                *string                `json:"dob,omitempty"`
 	DateOfBirth        *string                `json:"date_of_birth,omitempty"`
 	Taxvat             *string                `json:"taxvat,omitempty"`
 	Gender             *int                   `json:"gender,omitempty"`
@@ -25,13 +31,16 @@ type Customer struct {
 	DefaultBilling     *string                `json:"default_billing,omitempty"`
 	DefaultShipping    *string                `json:"default_shipping,omitempty"`
 	Addresses          []*CustomerAddress     `json:"addresses,omitempty"`
+	AddressesV2        *CustomerAddresses     `json:"addressesV2,omitempty"`
 	ConfirmationStatus ConfirmationStatusEnum `json:"confirmation_status"`
 	GroupID            *int                   `json:"group_id,omitempty"`
+	Group              *CustomerGroup         `json:"group,omitempty"`
 }
 
 type CustomerAddress struct {
 	ID              *int                   `json:"id,omitempty"`
 	UID             string                 `json:"uid"`
+	CustomerID      *int                   `json:"customer_id,omitempty"`
 	Firstname       *string                `json:"firstname,omitempty"`
 	Lastname        *string                `json:"lastname,omitempty"`
 	Middlename      *string                `json:"middlename,omitempty"`
@@ -84,6 +93,15 @@ type CustomerAddressRegionInput struct {
 	RegionID   *int    `json:"region_id,omitempty"`
 }
 
+type CustomerAddresses struct {
+	// List of customer addresses.
+	Items []*CustomerAddress `json:"items,omitempty"`
+	// Pagination metadata.
+	PageInfo *SearchResultPageInfo `json:"page_info,omitempty"`
+	// Total number of addresses.
+	TotalCount *int `json:"total_count,omitempty"`
+}
+
 type CustomerCreateInput struct {
 	Firstname    string  `json:"firstname"`
 	Lastname     string  `json:"lastname"`
@@ -95,6 +113,27 @@ type CustomerCreateInput struct {
 	DateOfBirth  *string `json:"date_of_birth,omitempty"`
 	Taxvat       *string `json:"taxvat,omitempty"`
 	Gender       *int    `json:"gender,omitempty"`
+	IsSubscribed *bool   `json:"is_subscribed,omitempty"`
+}
+
+type CustomerGroup struct {
+	UID  string `json:"uid"`
+	Name string `json:"name"`
+}
+
+// Deprecated: Use CustomerCreateInput/CustomerUpdateInput instead.
+type CustomerInput struct {
+	Prefix       *string `json:"prefix,omitempty"`
+	Firstname    *string `json:"firstname,omitempty"`
+	Middlename   *string `json:"middlename,omitempty"`
+	Lastname     *string `json:"lastname,omitempty"`
+	Suffix       *string `json:"suffix,omitempty"`
+	Email        *string `json:"email,omitempty"`
+	Dob          *string `json:"dob,omitempty"`
+	DateOfBirth  *string `json:"date_of_birth,omitempty"`
+	Taxvat       *string `json:"taxvat,omitempty"`
+	Gender       *int    `json:"gender,omitempty"`
+	Password     *string `json:"password,omitempty"`
 	IsSubscribed *bool   `json:"is_subscribed,omitempty"`
 }
 
@@ -130,6 +169,12 @@ type Query struct {
 
 type RevokeCustomerTokenOutput struct {
 	Result bool `json:"result"`
+}
+
+type SearchResultPageInfo struct {
+	CurrentPage *int `json:"current_page,omitempty"`
+	PageSize    *int `json:"page_size,omitempty"`
+	TotalPages  *int `json:"total_pages,omitempty"`
 }
 
 type ConfirmationStatusEnum string
