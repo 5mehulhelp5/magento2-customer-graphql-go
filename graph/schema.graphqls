@@ -7,6 +7,9 @@ type Query {
 
     """Check whether the specified email has already been used to create a customer account."""
     isEmailAvailable(email: String!): IsEmailAvailableOutput
+
+    """Returns the customer group of the logged-in customer."""
+    customerGroup: CustomerGroup!
 }
 
 type Mutation {
@@ -31,11 +34,38 @@ type Mutation {
     """Create a new customer address."""
     createCustomerAddress(input: CustomerAddressInput!): CustomerAddress
 
-    """Update an existing customer address."""
+    """Update an existing customer address by ID."""
     updateCustomerAddress(id: Int!, input: CustomerAddressInput!): CustomerAddress
 
-    """Delete a customer address."""
+    """Delete a customer address by ID."""
     deleteCustomerAddress(id: Int!): Boolean
+
+    """Update an existing customer address by UID."""
+    updateCustomerAddressV2(uid: ID!, input: CustomerAddressInput!): CustomerAddress
+
+    """Delete a customer address by UID."""
+    deleteCustomerAddressV2(uid: ID!): Boolean
+
+    """Delete the logged-in customer account."""
+    deleteCustomer: Boolean
+
+    """Request a password reset email for the specified email address."""
+    requestPasswordResetEmail(email: String!): Boolean
+
+    """Reset customer password using a reset token."""
+    resetPassword(email: String!, resetPasswordToken: String!, newPassword: String!): Boolean
+
+    """Confirm a customer email address using a confirmation key."""
+    confirmEmail(input: ConfirmEmailInput!): CustomerOutput
+
+    """Resend the confirmation email for the specified email address."""
+    resendConfirmationEmail(email: String!): Boolean
+
+    """Create a new customer account (deprecated)."""
+    createCustomer(input: CustomerInput!): CustomerOutput @deprecated(reason: "Use 'createCustomerV2' instead.")
+
+    """Update the logged-in customer (deprecated)."""
+    updateCustomer(input: CustomerInput!): CustomerOutput @deprecated(reason: "Use 'updateCustomerV2' instead.")
 }
 
 # ─── Output Types ────────────────────────────────────────────────────────────
@@ -48,6 +78,7 @@ type Customer {
     prefix: String
     suffix: String
     email: String
+    dob: String @deprecated(reason: "Use 'date_of_birth' instead.")
     date_of_birth: String
     taxvat: String
     gender: Int
@@ -56,13 +87,16 @@ type Customer {
     default_billing: String
     default_shipping: String
     addresses: [CustomerAddress]
+    addressesV2(currentPage: Int = 1, pageSize: Int = 5): CustomerAddresses
     confirmation_status: ConfirmationStatusEnum!
     group_id: Int @deprecated(reason: "Use 'group' instead.")
+    group: CustomerGroup
 }
 
 type CustomerAddress {
     id: Int @deprecated(reason: "Use 'uid' instead.")
     uid: ID!
+    customer_id: Int @deprecated(reason: "Use 'uid' instead.")
     firstname: String
     lastname: String
     middlename: String
@@ -81,6 +115,21 @@ type CustomerAddress {
     vat_id: String
     default_shipping: Boolean
     default_billing: Boolean
+}
+
+type CustomerAddresses {
+    """List of customer addresses."""
+    items: [CustomerAddress]
+    """Pagination metadata."""
+    page_info: SearchResultPageInfo
+    """Total number of addresses."""
+    total_count: Int
+}
+
+type SearchResultPageInfo {
+    current_page: Int
+    page_size: Int
+    total_pages: Int
 }
 
 type CustomerAddressRegion {
@@ -103,6 +152,11 @@ type RevokeCustomerTokenOutput {
 
 type IsEmailAvailableOutput {
     is_email_available: Boolean
+}
+
+type CustomerGroup {
+    uid: ID!
+    name: String!
 }
 
 # ─── Input Types ─────────────────────────────────────────────────────────────
@@ -133,6 +187,22 @@ input CustomerUpdateInput {
     is_subscribed: Boolean
 }
 
+"""Deprecated: Use CustomerCreateInput/CustomerUpdateInput instead."""
+input CustomerInput {
+    prefix: String
+    firstname: String
+    middlename: String
+    lastname: String
+    suffix: String
+    email: String
+    dob: String @deprecated(reason: "Use 'date_of_birth' instead.")
+    date_of_birth: String
+    taxvat: String
+    gender: Int
+    password: String
+    is_subscribed: Boolean
+}
+
 input CustomerAddressInput {
     firstname: String
     lastname: String
@@ -159,6 +229,11 @@ input CustomerAddressRegionInput {
     region_id: Int
 }
 
+input ConfirmEmailInput {
+    email: String!
+    confirmation_key: String!
+}
+
 # ─── Enums ───────────────────────────────────────────────────────────────────
 
 enum ConfirmationStatusEnum {
@@ -167,250 +242,15 @@ enum ConfirmationStatusEnum {
 }
 
 enum CountryCodeEnum {
-    AF
-    AX
-    AL
-    DZ
-    AS
-    AD
-    AO
-    AI
-    AQ
-    AG
-    AR
-    AM
-    AW
-    AU
-    AT
-    AZ
-    BS
-    BH
-    BD
-    BB
-    BY
-    BE
-    BZ
-    BJ
-    BM
-    BT
-    BO
-    BA
-    BW
-    BV
-    BR
-    IO
-    VG
-    BN
-    BG
-    BF
-    BI
-    KH
-    CM
-    CA
-    CV
-    KY
-    CF
-    TD
-    CL
-    CN
-    CX
-    CC
-    CO
-    KM
-    CG
-    CD
-    CK
-    CR
-    CI
-    HR
-    CU
-    CY
-    CZ
-    DK
-    DJ
-    DM
-    DO
-    EC
-    EG
-    SV
-    GQ
-    ER
-    EE
-    ET
-    FK
-    FO
-    FJ
-    FI
-    FR
-    GF
-    PF
-    TF
-    GA
-    GM
-    GE
-    DE
-    GH
-    GI
-    GR
-    GL
-    GD
-    GP
-    GU
-    GT
-    GG
-    GN
-    GW
-    GY
-    HT
-    HM
-    HN
-    HK
-    HU
-    IS
-    IN
-    ID
-    IR
-    IQ
-    IE
-    IM
-    IL
-    IT
-    JM
-    JP
-    JE
-    JO
-    KZ
-    KE
-    KI
-    KW
-    KG
-    LA
-    LV
-    LB
-    LS
-    LR
-    LY
-    LI
-    LT
-    LU
-    MO
-    MK
-    MG
-    MW
-    MY
-    MV
-    ML
-    MT
-    MH
-    MQ
-    MR
-    MU
-    YT
-    MX
-    FM
-    MD
-    MC
-    MN
-    ME
-    MS
-    MA
-    MZ
-    MM
-    NA
-    NR
-    NP
-    NL
-    AN
-    NC
-    NZ
-    NI
-    NE
-    NG
-    NU
-    NF
-    KP
-    MP
-    NO
-    OM
-    PK
-    PW
-    PS
-    PA
-    PG
-    PY
-    PE
-    PH
-    PN
-    PL
-    PT
-    QA
-    RE
-    RO
-    RU
-    RW
-    WS
-    SM
-    ST
-    SA
-    SN
-    RS
-    SC
-    SL
-    SG
-    SK
-    SI
-    SB
-    SO
-    ZA
-    GS
-    KR
-    ES
-    LK
-    BL
-    SH
-    KN
-    LC
-    MF
-    PM
-    VC
-    SS
-    SD
-    SR
-    SJ
-    SZ
-    SE
-    CH
-    SY
-    TW
-    TJ
-    TZ
-    TH
-    TL
-    TG
-    TK
-    TO
-    TT
-    TN
-    TR
-    TM
-    TC
-    TV
-    UG
-    UA
-    AE
-    GB
-    US
-    UM
-    VI
-    UY
-    UZ
-    VU
-    VA
-    VE
-    VN
-    WF
-    EH
-    YE
-    ZM
-    ZW
+    AF AX AL DZ AS AD AO AI AQ AG AR AM AW AU AT AZ BS BH BD BB BY BE BZ BJ
+    BM BT BO BA BW BV BR IO VG BN BG BF BI KH CM CA CV KY CF TD CL CN CX CC
+    CO KM CG CD CK CR CI HR CU CY CZ DK DJ DM DO EC EG SV GQ ER EE ET FK FO
+    FJ FI FR GF PF TF GA GM GE DE GH GI GR GL GD GP GU GT GG GN GW GY HT HM
+    HN HK HU IS IN ID IR IQ IE IM IL IT JM JP JE JO KZ KE KI KW KG LA LV LB
+    LS LR LY LI LT LU MO MK MG MW MY MV ML MT MH MQ MR MU YT MX FM MD MC MN
+    ME MS MA MZ MM NA NR NP NL AN NC NZ NI NE NG NU NF KP MP NO OM PK PW PS
+    PA PG PY PE PH PN PL PT QA RE RO RU RW WS SM ST SA SN RS SC SL SG SK SI
+    SB SO ZA GS KR ES LK BL SH KN LC MF PM VC SS SD SR SJ SZ SE CH SY TW TJ
+    TZ TH TL TG TK TO TT TN TR TM TC TV UG UA AE GB US UM VI UY UZ VU VA VE
+    VN WF EH YE ZM ZW
 }

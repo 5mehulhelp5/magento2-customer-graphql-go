@@ -7,6 +7,9 @@ package graph
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
+	"strconv"
 
 	"github.com/magendooro/magento2-customer-graphql-go/graph/model"
 	"github.com/magendooro/magento2-customer-graphql-go/internal/middleware"
@@ -19,7 +22,6 @@ func (r *mutationResolver) GenerateCustomerToken(ctx context.Context, email stri
 
 // RevokeCustomerToken is the resolver for the revokeCustomerToken field.
 func (r *mutationResolver) RevokeCustomerToken(ctx context.Context) (*model.RevokeCustomerTokenOutput, error) {
-	// Invalidate the token in the auth middleware cache
 	if token := middleware.GetBearerToken(ctx); token != "" && r.TokenResolver != nil {
 		r.TokenResolver.Invalidate(token)
 	}
@@ -65,6 +67,104 @@ func (r *mutationResolver) DeleteCustomerAddress(ctx context.Context, id int) (*
 	return &result, nil
 }
 
+// UpdateCustomerAddressV2 is the resolver for the updateCustomerAddressV2 field.
+func (r *mutationResolver) UpdateCustomerAddressV2(ctx context.Context, uid string, input model.CustomerAddressInput) (*model.CustomerAddress, error) {
+	id, err := decodeUID(uid)
+	if err != nil {
+		return nil, fmt.Errorf("invalid address uid: %w", err)
+	}
+	return r.CustomerService.UpdateAddress(ctx, id, input)
+}
+
+// DeleteCustomerAddressV2 is the resolver for the deleteCustomerAddressV2 field.
+func (r *mutationResolver) DeleteCustomerAddressV2(ctx context.Context, uid string) (*bool, error) {
+	id, err := decodeUID(uid)
+	if err != nil {
+		return nil, fmt.Errorf("invalid address uid: %w", err)
+	}
+	result, err := r.CustomerService.DeleteAddress(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// DeleteCustomer is the resolver for the deleteCustomer field.
+func (r *mutationResolver) DeleteCustomer(ctx context.Context) (*bool, error) {
+	result, err := r.CustomerService.DeleteCustomer(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// RequestPasswordResetEmail is the resolver for the requestPasswordResetEmail field.
+func (r *mutationResolver) RequestPasswordResetEmail(ctx context.Context, email string) (*bool, error) {
+	result, err := r.CustomerService.RequestPasswordResetEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ResetPassword is the resolver for the resetPassword field.
+func (r *mutationResolver) ResetPassword(ctx context.Context, email string, resetPasswordToken string, newPassword string) (*bool, error) {
+	result, err := r.CustomerService.ResetPassword(ctx, email, resetPasswordToken, newPassword)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ConfirmEmail is the resolver for the confirmEmail field.
+func (r *mutationResolver) ConfirmEmail(ctx context.Context, input model.ConfirmEmailInput) (*model.CustomerOutput, error) {
+	return r.CustomerService.ConfirmEmail(ctx, input)
+}
+
+// ResendConfirmationEmail is the resolver for the resendConfirmationEmail field.
+func (r *mutationResolver) ResendConfirmationEmail(ctx context.Context, email string) (*bool, error) {
+	result, err := r.CustomerService.ResendConfirmationEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// CreateCustomer is the resolver for the createCustomer field (deprecated).
+func (r *mutationResolver) CreateCustomer(ctx context.Context, input model.CustomerInput) (*model.CustomerOutput, error) {
+	// Convert deprecated CustomerInput to CustomerCreateInput
+	createInput := model.CustomerCreateInput{
+		Firstname:   derefStr(input.Firstname),
+		Lastname:    derefStr(input.Lastname),
+		Email:       derefStr(input.Email),
+		Password:    derefStr(input.Password),
+		Prefix:      input.Prefix,
+		Middlename:  input.Middlename,
+		Suffix:      input.Suffix,
+		DateOfBirth: coalesce(input.DateOfBirth, input.Dob),
+		Taxvat:      input.Taxvat,
+		Gender:      input.Gender,
+		IsSubscribed: input.IsSubscribed,
+	}
+	return r.CustomerService.CreateCustomer(ctx, createInput)
+}
+
+// UpdateCustomer is the resolver for the updateCustomer field (deprecated).
+func (r *mutationResolver) UpdateCustomer(ctx context.Context, input model.CustomerInput) (*model.CustomerOutput, error) {
+	updateInput := model.CustomerUpdateInput{
+		Firstname:   input.Firstname,
+		Lastname:    input.Lastname,
+		Middlename:  input.Middlename,
+		Prefix:      input.Prefix,
+		Suffix:      input.Suffix,
+		DateOfBirth: coalesce(input.DateOfBirth, input.Dob),
+		Taxvat:      input.Taxvat,
+		Gender:      input.Gender,
+		IsSubscribed: input.IsSubscribed,
+	}
+	return r.CustomerService.UpdateCustomer(ctx, updateInput)
+}
+
 // Customer is the resolver for the customer field.
 func (r *queryResolver) Customer(ctx context.Context) (*model.Customer, error) {
 	return r.CustomerService.GetCustomer(ctx)
@@ -73,6 +173,11 @@ func (r *queryResolver) Customer(ctx context.Context) (*model.Customer, error) {
 // IsEmailAvailable is the resolver for the isEmailAvailable field.
 func (r *queryResolver) IsEmailAvailable(ctx context.Context, email string) (*model.IsEmailAvailableOutput, error) {
 	return r.CustomerService.IsEmailAvailable(ctx, email)
+}
+
+// CustomerGroup is the resolver for the customerGroup field.
+func (r *queryResolver) CustomerGroup(ctx context.Context) (*model.CustomerGroup, error) {
+	return r.CustomerService.GetCustomerGroup(ctx)
 }
 
 // Mutation returns MutationResolver implementation.
@@ -84,3 +189,27 @@ func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 
+// decodeUID decodes a base64-encoded UID to an integer ID.
+func decodeUID(uid string) (int, error) {
+	decoded, err := base64.StdEncoding.DecodeString(uid)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(string(decoded))
+}
+
+func derefStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func coalesce(values ...*string) *string {
+	for _, v := range values {
+		if v != nil {
+			return v
+		}
+	}
+	return nil
+}
