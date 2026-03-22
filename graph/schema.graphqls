@@ -91,6 +91,7 @@ type Customer {
     confirmation_status: ConfirmationStatusEnum!
     group_id: Int @deprecated(reason: "Use 'group' instead.")
     group: CustomerGroup
+    orders(filter: CustomerOrdersFilterInput, currentPage: Int = 1, pageSize: Int = 20, sort: CustomerOrderSortInput): CustomerOrders
 }
 
 type CustomerAddress {
@@ -253,4 +254,319 @@ enum CountryCodeEnum {
     SB SO ZA GS KR ES LK BL SH KN LC MF PM VC SS SD SR SJ SZ SE CH SY TW TJ
     TZ TH TL TG TK TO TT TN TR TM TC TV UG UA AE GB US UM VI UY UZ VU VA VE
     VN WF EH YE ZM ZW
+}
+
+enum CurrencyEnum {
+    USD EUR GBP CAD AUD JPY CNY CHF SEK NOK DKK NZD MXN SGD HKD
+    INR BRL ZAR RUB KRW TRY PLN CZK HUF RON BGN HRK ILS PHP THB
+    MYR IDR AED SAR QAR KWD BHD OMR JOD LBP EGP MAD TND DZD LYD
+    NGN GHS KES TZS UGX ETB UAH GEL AMD AZN KZT UZS BDT PKR LKR
+    NPR MMK KHR LAK VND MOP TWD
+}
+
+enum SortEnum {
+    ASC
+    DESC
+}
+
+# ─── Order Filter & Sort Inputs ───────────────────────────────────────────────
+
+input FilterStringTypeInput {
+    eq: String
+    match: String
+    in: [String]
+}
+
+input FilterRangeTypeInput {
+    from: String
+    to: String
+}
+
+input FilterEqualTypeInput {
+    eq: String
+    in: [String]
+}
+
+input CustomerOrdersFilterInput {
+    number: FilterStringTypeInput
+    order_date: FilterRangeTypeInput
+    status: FilterEqualTypeInput
+    grand_total: FilterRangeTypeInput
+}
+
+input CustomerOrderSortInput {
+    order_date: SortEnum
+    number: SortEnum
+    grand_total: SortEnum
+}
+
+# ─── Order Output Types ───────────────────────────────────────────────────────
+
+type Money {
+    value: Float
+    currency: CurrencyEnum
+}
+
+type CustomerOrders {
+    """List of customer orders."""
+    items: [CustomerOrder]!
+    """Pagination metadata."""
+    page_info: SearchResultPageInfo
+    """Total number of orders matching the filter."""
+    total_count: Int
+}
+
+type CustomerOrder {
+    id: ID!
+    """The order increment ID (same as number)."""
+    order_number: String!
+    """The order increment ID."""
+    number: String!
+    """The date the order was placed."""
+    order_date: String!
+    """The current status of the order."""
+    status: String!
+    """The carrier for the order."""
+    carrier: String
+    """The shipping method."""
+    shipping_method: String
+    """The shipping address."""
+    shipping_address: OrderAddress
+    """The billing address."""
+    billing_address: OrderAddress
+    """Payment methods used for the order."""
+    payment_methods: [OrderPaymentMethod]!
+    """A list of order line items."""
+    items: [OrderItemInterface]!
+    """The total amounts of the order."""
+    total: OrderTotal
+    """A list of invoices for the order."""
+    invoices: [Invoice]!
+    """A list of shipments for the order."""
+    shipments: [OrderShipment]
+    """A list of credit memos for the order."""
+    credit_memos: [CreditMemo]
+    """A list of customer-visible comments on the order."""
+    comments: [SalesCommentItem]
+}
+
+type OrderTotal {
+    grand_total: Money!
+    subtotal: Money!
+    total_tax: Money!
+    total_shipping: Money!
+    taxes: [TaxItem]
+    discounts: [Discount]
+    shipping_handling: ShippingHandling
+}
+
+type TaxItem {
+    amount: Money!
+    title: String!
+    rate: Float!
+}
+
+type Discount {
+    amount: Money!
+    label: String!
+}
+
+type ShippingHandling {
+    amount_including_tax: Money
+    amount_excluding_tax: Money
+    total_amount: Money!
+    taxes: [TaxItem]
+    discounts: [ShippingDiscount]
+}
+
+type ShippingDiscount {
+    amount: Money!
+}
+
+type KeyValue {
+    name: String
+    value: String
+}
+
+type OrderAddress {
+    firstname: String!
+    lastname: String!
+    middlename: String
+    prefix: String
+    suffix: String
+    company: String
+    street: [String]!
+    city: String!
+    region: String
+    region_id: Int
+    postcode: String
+    country_code: CountryCodeEnum
+    telephone: String
+    fax: String
+    vat_id: String
+}
+
+type OrderPaymentMethod {
+    name: String!
+    type: String!
+    additional_data: [KeyValue]
+}
+
+interface OrderItemInterface {
+    id: ID!
+    product_name: String
+    product_sku: String!
+    product_url_key: String
+    product_type: String
+    product_sale_price: Money!
+    quantity_ordered: Float
+    quantity_shipped: Float
+    quantity_invoiced: Float
+    quantity_refunded: Float
+    quantity_canceled: Float
+    status: String
+    discounts: [Discount]
+    entered_options: [OrderItemOption]
+    selected_options: [OrderItemOption]
+}
+
+type OrderItem implements OrderItemInterface {
+    id: ID!
+    product_name: String
+    product_sku: String!
+    product_url_key: String
+    product_type: String
+    product_sale_price: Money!
+    quantity_ordered: Float
+    quantity_shipped: Float
+    quantity_invoiced: Float
+    quantity_refunded: Float
+    quantity_canceled: Float
+    status: String
+    discounts: [Discount]
+    entered_options: [OrderItemOption]
+    selected_options: [OrderItemOption]
+}
+
+type OrderItemOption {
+    id: String!
+    label: String!
+    value: String!
+}
+
+type SalesCommentItem {
+    message: String!
+    timestamp: String!
+}
+
+# ─── Invoice Types ────────────────────────────────────────────────────────────
+
+type Invoice {
+    id: ID!
+    number: String!
+    total: InvoiceTotal
+    items: [InvoiceItemInterface]
+    comments: [SalesCommentItem]
+}
+
+type InvoiceTotal {
+    grand_total: Money!
+    subtotal: Money!
+    total_tax: Money!
+    total_shipping: Money!
+    taxes: [TaxItem]
+    discounts: [Discount]
+    shipping_handling: ShippingHandling
+}
+
+interface InvoiceItemInterface {
+    id: ID!
+    product_name: String
+    product_sku: String!
+    product_sale_price: Money!
+    quantity_invoiced: Float!
+    discounts: [Discount]
+    order_item: OrderItemInterface
+}
+
+type InvoiceItem implements InvoiceItemInterface {
+    id: ID!
+    product_name: String
+    product_sku: String!
+    product_sale_price: Money!
+    quantity_invoiced: Float!
+    discounts: [Discount]
+    order_item: OrderItemInterface
+}
+
+# ─── Shipment Types ───────────────────────────────────────────────────────────
+
+type OrderShipment {
+    id: ID!
+    number: String!
+    tracking: [ShipmentTracking]
+    items: [ShipmentItemInterface]
+    comments: [SalesCommentItem]
+}
+
+type ShipmentTracking {
+    title: String!
+    carrier: String!
+    number: String
+}
+
+interface ShipmentItemInterface {
+    id: ID!
+    product_name: String
+    product_sku: String!
+    quantity_shipped: Float!
+    order_item: OrderItemInterface
+}
+
+type ShipmentItem implements ShipmentItemInterface {
+    id: ID!
+    product_name: String
+    product_sku: String!
+    quantity_shipped: Float!
+    order_item: OrderItemInterface
+}
+
+# ─── Credit Memo Types ────────────────────────────────────────────────────────
+
+type CreditMemo {
+    id: ID!
+    number: String!
+    total: CreditMemoTotal
+    items: [CreditMemoItemInterface]
+    comments: [SalesCommentItem]
+}
+
+type CreditMemoTotal {
+    grand_total: Money!
+    subtotal: Money!
+    total_tax: Money!
+    total_shipping: Money!
+    taxes: [TaxItem]
+    discounts: [Discount]
+    shipping_handling: ShippingHandling
+}
+
+interface CreditMemoItemInterface {
+    id: ID!
+    product_name: String
+    product_sku: String!
+    product_sale_price: Money!
+    quantity_refunded: Float!
+    discounts: [Discount]
+    order_item: OrderItemInterface
+}
+
+type CreditMemoItem implements CreditMemoItemInterface {
+    id: ID!
+    product_name: String
+    product_sku: String!
+    product_sale_price: Money!
+    quantity_refunded: Float!
+    discounts: [Discount]
+    order_item: OrderItemInterface
 }
