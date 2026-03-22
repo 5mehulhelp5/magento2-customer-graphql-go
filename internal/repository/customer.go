@@ -266,7 +266,13 @@ func HashPassword(password string) (string, error) {
 	memLimitKiB := uint32(65536) // 64MB
 	memLimitBytes := 67108864
 
-	key := argon2.IDKey([]byte(password), []byte(saltStr), opsLimit, memLimitKiB, 1, keyLen)
+	// sodium_crypto_pwhash uses only the first 16 bytes of the salt
+	saltForHash := []byte(saltStr)
+	if len(saltForHash) > 16 {
+		saltForHash = saltForHash[:16]
+	}
+
+	key := argon2.IDKey([]byte(password), saltForHash, opsLimit, memLimitKiB, 1, keyLen)
 	hashHex := hex.EncodeToString(key)
 
 	version := fmt.Sprintf("3_%d_%d_%d", keyLen, opsLimit, memLimitBytes)

@@ -820,22 +820,34 @@ func TestCompare_ResendConfirmationEmail(t *testing.T) {
 }
 
 func TestCompare_DeprecatedCreateCustomer(t *testing.T) {
-	// Test that the deprecated createCustomer mutation exists and validates input
-	resp := doQuery(t, `mutation { createCustomer(input: { firstname: "Test", lastname: "User", email: "deprecated-test-999@example.com", password: "Test1234!" }) { customer { id email } } }`, "")
+	testEmail := "deprecated-test-999@example.com"
+	testPassword := "Test1234!"
+
+	resp := doQuery(t, `mutation { createCustomer(input: { firstname: "Test", lastname: "User", email: "`+testEmail+`", password: "`+testPassword+`" }) { customer { id email } } }`, "")
 	if len(resp.Errors) > 0 {
-		// May fail if email already exists, that's fine — schema works
 		t.Logf("deprecated createCustomer response: %s", resp.Errors[0].Message)
-	} else {
-		// Clean up: delete the created customer via DB
-		var data struct {
-			CreateCustomer struct {
-				Customer struct {
-					ID string `json:"id"`
-				} `json:"customer"`
-			} `json:"createCustomer"`
+		return
+	}
+
+	var data struct {
+		CreateCustomer struct {
+			Customer struct {
+				ID string `json:"id"`
+			} `json:"customer"`
+		} `json:"createCustomer"`
+	}
+	json.Unmarshal(resp.Data, &data)
+	t.Logf("deprecated createCustomer succeeded, id=%s", data.CreateCustomer.Customer.ID)
+
+	// Clean up: generate token, then delete the customer
+	tokenResp := doQuery(t, `mutation { generateCustomerToken(email: "`+testEmail+`", password: "`+testPassword+`") { token } }`, "")
+	if len(tokenResp.Errors) == 0 {
+		var td struct {
+			GenerateCustomerToken struct{ Token string `json:"token"` } `json:"generateCustomerToken"`
 		}
-		json.Unmarshal(resp.Data, &data)
-		t.Logf("deprecated createCustomer succeeded, id=%s", data.CreateCustomer.Customer.ID)
+		json.Unmarshal(tokenResp.Data, &td)
+		doQuery(t, `mutation { deleteCustomer }`, td.GenerateCustomerToken.Token)
+		t.Log("test customer cleaned up via deleteCustomer")
 	}
 }
 
