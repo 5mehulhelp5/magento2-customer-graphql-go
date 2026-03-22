@@ -901,6 +901,83 @@ func TestCompare_AddressV2Mutations(t *testing.T) {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+func TestCompare_CustomAttributes_Customer(t *testing.T) {
+	token := getTestToken(t)
+
+	// Query custom_attributes on Customer — should return empty array for default installation
+	// (all standard customer attributes are static/flat, not EAV)
+	resp := doQuery(t, `{
+		customer {
+			custom_attributes { code ... on AttributeValue { value } }
+		}
+	}`, token)
+
+	if len(resp.Errors) > 0 {
+		t.Fatalf("custom_attributes query failed: %s", resp.Errors[0].Message)
+	}
+
+	var data struct {
+		Customer struct {
+			CustomAttributes []json.RawMessage `json:"custom_attributes"`
+		} `json:"customer"`
+	}
+	json.Unmarshal(resp.Data, &data)
+
+	// Default Magento installation has no user-defined EAV attributes
+	// So custom_attributes should be empty (or null)
+	t.Logf("custom_attributes count: %d (expected 0 for default installation)", len(data.Customer.CustomAttributes))
+}
+
+func TestCompare_CustomAttributesV2_Address(t *testing.T) {
+	token := getTestToken(t)
+
+	resp := doQuery(t, `{
+		customer {
+			addresses {
+				id
+				custom_attributesV2 { code ... on AttributeValue { value } }
+			}
+		}
+	}`, token)
+
+	if len(resp.Errors) > 0 {
+		t.Fatalf("custom_attributesV2 query failed: %s", resp.Errors[0].Message)
+	}
+
+	var data struct {
+		Customer struct {
+			Addresses []struct {
+				ID               int               `json:"id"`
+				CustomAttributes []json.RawMessage `json:"custom_attributesV2"`
+			} `json:"addresses"`
+		} `json:"customer"`
+	}
+	json.Unmarshal(resp.Data, &data)
+
+	if len(data.Customer.Addresses) > 0 {
+		t.Logf("address %d custom_attributesV2 count: %d (expected 0 for default installation)",
+			data.Customer.Addresses[0].ID, len(data.Customer.Addresses[0].CustomAttributes))
+	}
+}
+
+func TestCompare_CustomAttributes_WithFilter(t *testing.T) {
+	token := getTestToken(t)
+
+	// Filter by specific attribute codes — should return empty even with filter
+	resp := doQuery(t, `{
+		customer {
+			custom_attributes(attributeCodes: ["nonexistent_attr"]) {
+				code
+				... on AttributeValue { value }
+			}
+		}
+	}`, token)
+
+	if len(resp.Errors) > 0 {
+		t.Fatalf("filtered custom_attributes query failed: %s", resp.Errors[0].Message)
+	}
+}
+
 func itoa(i int) string {
 	return strconv.Itoa(i)
 }

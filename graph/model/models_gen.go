@@ -9,9 +9,146 @@ import (
 	"strconv"
 )
 
+// Interface for custom EAV attribute values.
+type AttributeValueInterface interface {
+	IsAttributeValueInterface()
+	// The attribute code.
+	GetCode() string
+}
+
+type CreditMemoItemInterface interface {
+	IsCreditMemoItemInterface()
+	GetID() string
+	GetProductName() *string
+	GetProductSku() string
+	GetProductSalePrice() *Money
+	GetQuantityRefunded() float64
+	GetDiscounts() []*Discount
+	GetOrderItem() OrderItemInterface
+}
+
+type InvoiceItemInterface interface {
+	IsInvoiceItemInterface()
+	GetID() string
+	GetProductName() *string
+	GetProductSku() string
+	GetProductSalePrice() *Money
+	GetQuantityInvoiced() float64
+	GetDiscounts() []*Discount
+	GetOrderItem() OrderItemInterface
+}
+
+type OrderItemInterface interface {
+	IsOrderItemInterface()
+	GetID() string
+	GetProductName() *string
+	GetProductSku() string
+	GetProductURLKey() *string
+	GetProductType() *string
+	GetProductSalePrice() *Money
+	GetQuantityOrdered() *float64
+	GetQuantityShipped() *float64
+	GetQuantityInvoiced() *float64
+	GetQuantityRefunded() *float64
+	GetQuantityCanceled() *float64
+	GetStatus() *string
+	GetDiscounts() []*Discount
+	GetEnteredOptions() []*OrderItemOption
+	GetSelectedOptions() []*OrderItemOption
+}
+
+type ShipmentItemInterface interface {
+	IsShipmentItemInterface()
+	GetID() string
+	GetProductName() *string
+	GetProductSku() string
+	GetQuantityShipped() float64
+	GetOrderItem() OrderItemInterface
+}
+
+type AttributeSelectedOption struct {
+	UID   string `json:"uid"`
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
+// Attribute value with selected options (for select/multiselect).
+type AttributeSelectedOptions struct {
+	Code            string                     `json:"code"`
+	SelectedOptions []*AttributeSelectedOption `json:"selected_options"`
+}
+
+func (AttributeSelectedOptions) IsAttributeValueInterface() {}
+
+// The attribute code.
+func (this AttributeSelectedOptions) GetCode() string { return this.Code }
+
+// Simple string attribute value.
+type AttributeValue struct {
+	Code  string `json:"code"`
+	Value string `json:"value"`
+}
+
+func (AttributeValue) IsAttributeValueInterface() {}
+
+// The attribute code.
+func (this AttributeValue) GetCode() string { return this.Code }
+
+type AttributeValueInput struct {
+	AttributeCode   string   `json:"attribute_code"`
+	Value           *string  `json:"value,omitempty"`
+	SelectedOptions []string `json:"selected_options,omitempty"`
+}
+
 type ConfirmEmailInput struct {
 	Email           string `json:"email"`
 	ConfirmationKey string `json:"confirmation_key"`
+}
+
+type CreditMemo struct {
+	ID       string                    `json:"id"`
+	Number   string                    `json:"number"`
+	Total    *CreditMemoTotal          `json:"total,omitempty"`
+	Items    []CreditMemoItemInterface `json:"items,omitempty"`
+	Comments []*SalesCommentItem       `json:"comments,omitempty"`
+}
+
+type CreditMemoItem struct {
+	ID               string             `json:"id"`
+	ProductName      *string            `json:"product_name,omitempty"`
+	ProductSku       string             `json:"product_sku"`
+	ProductSalePrice *Money             `json:"product_sale_price"`
+	QuantityRefunded float64            `json:"quantity_refunded"`
+	Discounts        []*Discount        `json:"discounts,omitempty"`
+	OrderItem        OrderItemInterface `json:"order_item,omitempty"`
+}
+
+func (CreditMemoItem) IsCreditMemoItemInterface()        {}
+func (this CreditMemoItem) GetID() string                { return this.ID }
+func (this CreditMemoItem) GetProductName() *string      { return this.ProductName }
+func (this CreditMemoItem) GetProductSku() string        { return this.ProductSku }
+func (this CreditMemoItem) GetProductSalePrice() *Money  { return this.ProductSalePrice }
+func (this CreditMemoItem) GetQuantityRefunded() float64 { return this.QuantityRefunded }
+func (this CreditMemoItem) GetDiscounts() []*Discount {
+	if this.Discounts == nil {
+		return nil
+	}
+	interfaceSlice := make([]*Discount, 0, len(this.Discounts))
+	for _, concrete := range this.Discounts {
+		interfaceSlice = append(interfaceSlice, concrete)
+	}
+	return interfaceSlice
+}
+func (this CreditMemoItem) GetOrderItem() OrderItemInterface { return this.OrderItem }
+
+type CreditMemoTotal struct {
+	GrandTotal       *Money            `json:"grand_total"`
+	Subtotal         *Money            `json:"subtotal"`
+	TotalTax         *Money            `json:"total_tax"`
+	TotalShipping    *Money            `json:"total_shipping"`
+	Taxes            []*TaxItem        `json:"taxes,omitempty"`
+	Discounts        []*Discount       `json:"discounts,omitempty"`
+	ShippingHandling *ShippingHandling `json:"shipping_handling,omitempty"`
 }
 
 type Customer struct {
@@ -36,30 +173,40 @@ type Customer struct {
 	GroupID            *int                   `json:"group_id,omitempty"`
 	Group              *CustomerGroup         `json:"group,omitempty"`
 	Orders             *CustomerOrders        `json:"orders,omitempty"`
+	// Custom EAV attributes. Optionally filter by attribute codes.
+	CustomAttributes []AttributeValueInterface `json:"custom_attributes,omitempty"`
 }
 
 type CustomerAddress struct {
-	ID              *int                   `json:"id,omitempty"`
-	UID             string                 `json:"uid"`
-	CustomerID      *int                   `json:"customer_id,omitempty"`
-	Firstname       *string                `json:"firstname,omitempty"`
-	Lastname        *string                `json:"lastname,omitempty"`
-	Middlename      *string                `json:"middlename,omitempty"`
-	Prefix          *string                `json:"prefix,omitempty"`
-	Suffix          *string                `json:"suffix,omitempty"`
-	Company         *string                `json:"company,omitempty"`
-	Street          []*string              `json:"street,omitempty"`
-	City            *string                `json:"city,omitempty"`
-	Region          *CustomerAddressRegion `json:"region,omitempty"`
-	RegionID        *int                   `json:"region_id,omitempty"`
-	Postcode        *string                `json:"postcode,omitempty"`
-	CountryCode     *CountryCodeEnum       `json:"country_code,omitempty"`
-	CountryID       *string                `json:"country_id,omitempty"`
-	Telephone       *string                `json:"telephone,omitempty"`
-	Fax             *string                `json:"fax,omitempty"`
-	VatID           *string                `json:"vat_id,omitempty"`
-	DefaultShipping *bool                  `json:"default_shipping,omitempty"`
-	DefaultBilling  *bool                  `json:"default_billing,omitempty"`
+	ID               *int                        `json:"id,omitempty"`
+	UID              string                      `json:"uid"`
+	CustomerID       *int                        `json:"customer_id,omitempty"`
+	Firstname        *string                     `json:"firstname,omitempty"`
+	Lastname         *string                     `json:"lastname,omitempty"`
+	Middlename       *string                     `json:"middlename,omitempty"`
+	Prefix           *string                     `json:"prefix,omitempty"`
+	Suffix           *string                     `json:"suffix,omitempty"`
+	Company          *string                     `json:"company,omitempty"`
+	Street           []*string                   `json:"street,omitempty"`
+	City             *string                     `json:"city,omitempty"`
+	Region           *CustomerAddressRegion      `json:"region,omitempty"`
+	RegionID         *int                        `json:"region_id,omitempty"`
+	Postcode         *string                     `json:"postcode,omitempty"`
+	CountryCode      *CountryCodeEnum            `json:"country_code,omitempty"`
+	CountryID        *string                     `json:"country_id,omitempty"`
+	Telephone        *string                     `json:"telephone,omitempty"`
+	Fax              *string                     `json:"fax,omitempty"`
+	VatID            *string                     `json:"vat_id,omitempty"`
+	DefaultShipping  *bool                       `json:"default_shipping,omitempty"`
+	DefaultBilling   *bool                       `json:"default_billing,omitempty"`
+	CustomAttributes []*CustomerAddressAttribute `json:"custom_attributes,omitempty"`
+	// Custom EAV attributes. Optionally filter by attribute codes.
+	CustomAttributesV2 []AttributeValueInterface `json:"custom_attributesV2"`
+}
+
+type CustomerAddressAttribute struct {
+	AttributeCode string `json:"attribute_code"`
+	Value         string `json:"value"`
 }
 
 type CustomerAddressInput struct {
@@ -104,17 +251,18 @@ type CustomerAddresses struct {
 }
 
 type CustomerCreateInput struct {
-	Firstname    string  `json:"firstname"`
-	Lastname     string  `json:"lastname"`
-	Email        string  `json:"email"`
-	Password     string  `json:"password"`
-	Prefix       *string `json:"prefix,omitempty"`
-	Middlename   *string `json:"middlename,omitempty"`
-	Suffix       *string `json:"suffix,omitempty"`
-	DateOfBirth  *string `json:"date_of_birth,omitempty"`
-	Taxvat       *string `json:"taxvat,omitempty"`
-	Gender       *int    `json:"gender,omitempty"`
-	IsSubscribed *bool   `json:"is_subscribed,omitempty"`
+	Firstname        string                 `json:"firstname"`
+	Lastname         string                 `json:"lastname"`
+	Email            string                 `json:"email"`
+	Password         string                 `json:"password"`
+	Prefix           *string                `json:"prefix,omitempty"`
+	Middlename       *string                `json:"middlename,omitempty"`
+	Suffix           *string                `json:"suffix,omitempty"`
+	DateOfBirth      *string                `json:"date_of_birth,omitempty"`
+	Taxvat           *string                `json:"taxvat,omitempty"`
+	Gender           *int                   `json:"gender,omitempty"`
+	IsSubscribed     *bool                  `json:"is_subscribed,omitempty"`
+	CustomAttributes []*AttributeValueInput `json:"custom_attributes,omitempty"`
 }
 
 type CustomerGroup struct {
@@ -138,78 +286,44 @@ type CustomerInput struct {
 	IsSubscribed *bool   `json:"is_subscribed,omitempty"`
 }
 
-type CustomerOutput struct {
-	Customer *Customer `json:"customer"`
-}
-
-type CustomerToken struct {
-	Token *string `json:"token,omitempty"`
-}
-
-type CustomerUpdateInput struct {
-	Firstname    *string `json:"firstname,omitempty"`
-	Lastname     *string `json:"lastname,omitempty"`
-	Middlename   *string `json:"middlename,omitempty"`
-	Prefix       *string `json:"prefix,omitempty"`
-	Suffix       *string `json:"suffix,omitempty"`
-	DateOfBirth  *string `json:"date_of_birth,omitempty"`
-	Taxvat       *string `json:"taxvat,omitempty"`
-	Gender       *int    `json:"gender,omitempty"`
-	IsSubscribed *bool   `json:"is_subscribed,omitempty"`
-}
-
-type IsEmailAvailableOutput struct {
-	IsEmailAvailable *bool `json:"is_email_available,omitempty"`
-}
-
-type Mutation struct {
-}
-
-type Query struct {
-}
-
-type RevokeCustomerTokenOutput struct {
-	Result bool `json:"result"`
-}
-
-type SearchResultPageInfo struct {
-	CurrentPage *int `json:"current_page,omitempty"`
-	PageSize    *int `json:"page_size,omitempty"`
-	TotalPages  *int `json:"total_pages,omitempty"`
-}
-
-type FilterStringTypeInput struct {
-	Eq    *string   `json:"eq,omitempty"`
-	Match *string   `json:"match,omitempty"`
-	In    []*string `json:"in,omitempty"`
-}
-
-type FilterRangeTypeInput struct {
-	From *string `json:"from,omitempty"`
-	To   *string `json:"to,omitempty"`
-}
-
-type FilterEqualTypeInput struct {
-	Eq *string   `json:"eq,omitempty"`
-	In []*string `json:"in,omitempty"`
-}
-
-type CustomerOrdersFilterInput struct {
-	Number     *FilterStringTypeInput `json:"number,omitempty"`
-	OrderDate  *FilterRangeTypeInput  `json:"order_date,omitempty"`
-	Status     *FilterEqualTypeInput  `json:"status,omitempty"`
-	GrandTotal *FilterRangeTypeInput  `json:"grand_total,omitempty"`
+type CustomerOrder struct {
+	ID string `json:"id"`
+	// The order increment ID (same as number).
+	OrderNumber string `json:"order_number"`
+	// The order increment ID.
+	Number string `json:"number"`
+	// The date the order was placed.
+	OrderDate string `json:"order_date"`
+	// The current status of the order.
+	Status string `json:"status"`
+	// The carrier for the order.
+	Carrier *string `json:"carrier,omitempty"`
+	// The shipping method.
+	ShippingMethod *string `json:"shipping_method,omitempty"`
+	// The shipping address.
+	ShippingAddress *OrderAddress `json:"shipping_address,omitempty"`
+	// The billing address.
+	BillingAddress *OrderAddress `json:"billing_address,omitempty"`
+	// Payment methods used for the order.
+	PaymentMethods []*OrderPaymentMethod `json:"payment_methods"`
+	// A list of order line items.
+	Items []OrderItemInterface `json:"items"`
+	// The total amounts of the order.
+	Total *OrderTotal `json:"total,omitempty"`
+	// A list of invoices for the order.
+	Invoices []*Invoice `json:"invoices"`
+	// A list of shipments for the order.
+	Shipments []*OrderShipment `json:"shipments,omitempty"`
+	// A list of credit memos for the order.
+	CreditMemos []*CreditMemo `json:"credit_memos,omitempty"`
+	// A list of customer-visible comments on the order.
+	Comments []*SalesCommentItem `json:"comments,omitempty"`
 }
 
 type CustomerOrderSortInput struct {
 	OrderDate  *SortEnum `json:"order_date,omitempty"`
 	Number     *SortEnum `json:"number,omitempty"`
 	GrandTotal *SortEnum `json:"grand_total,omitempty"`
-}
-
-type Money struct {
-	Value    *float64      `json:"value,omitempty"`
-	Currency *CurrencyEnum `json:"currency,omitempty"`
 }
 
 type CustomerOrders struct {
@@ -221,39 +335,32 @@ type CustomerOrders struct {
 	TotalCount *int `json:"total_count,omitempty"`
 }
 
-type CustomerOrder struct {
-	ID             string                `json:"id"`
-	OrderNumber    string                `json:"order_number"`
-	Number         string                `json:"number"`
-	OrderDate      string                `json:"order_date"`
-	Status         string                `json:"status"`
-	Carrier        *string               `json:"carrier,omitempty"`
-	ShippingMethod *string               `json:"shipping_method,omitempty"`
-	ShippingAddress *OrderAddress        `json:"shipping_address,omitempty"`
-	BillingAddress  *OrderAddress        `json:"billing_address,omitempty"`
-	PaymentMethods []*OrderPaymentMethod `json:"payment_methods"`
-	Items          []OrderItemInterface  `json:"items"`
-	Total          *OrderTotal           `json:"total,omitempty"`
-	Invoices       []*Invoice            `json:"invoices"`
-	Shipments      []*OrderShipment      `json:"shipments,omitempty"`
-	CreditMemos    []*CreditMemo         `json:"credit_memos,omitempty"`
-	Comments       []*SalesCommentItem   `json:"comments,omitempty"`
+type CustomerOrdersFilterInput struct {
+	Number     *FilterStringTypeInput `json:"number,omitempty"`
+	OrderDate  *FilterRangeTypeInput  `json:"order_date,omitempty"`
+	Status     *FilterEqualTypeInput  `json:"status,omitempty"`
+	GrandTotal *FilterRangeTypeInput  `json:"grand_total,omitempty"`
 }
 
-type OrderTotal struct {
-	GrandTotal      *Money            `json:"grand_total"`
-	Subtotal        *Money            `json:"subtotal"`
-	TotalTax        *Money            `json:"total_tax"`
-	TotalShipping   *Money            `json:"total_shipping"`
-	Taxes           []*TaxItem        `json:"taxes,omitempty"`
-	Discounts       []*Discount       `json:"discounts,omitempty"`
-	ShippingHandling *ShippingHandling `json:"shipping_handling,omitempty"`
+type CustomerOutput struct {
+	Customer *Customer `json:"customer"`
 }
 
-type TaxItem struct {
-	Amount *Money   `json:"amount"`
-	Title  string   `json:"title"`
-	Rate   float64  `json:"rate"`
+type CustomerToken struct {
+	Token *string `json:"token,omitempty"`
+}
+
+type CustomerUpdateInput struct {
+	Firstname        *string                `json:"firstname,omitempty"`
+	Lastname         *string                `json:"lastname,omitempty"`
+	Middlename       *string                `json:"middlename,omitempty"`
+	Prefix           *string                `json:"prefix,omitempty"`
+	Suffix           *string                `json:"suffix,omitempty"`
+	DateOfBirth      *string                `json:"date_of_birth,omitempty"`
+	Taxvat           *string                `json:"taxvat,omitempty"`
+	Gender           *int                   `json:"gender,omitempty"`
+	IsSubscribed     *bool                  `json:"is_subscribed,omitempty"`
+	CustomAttributes []*AttributeValueInput `json:"custom_attributes,omitempty"`
 }
 
 type Discount struct {
@@ -261,16 +368,70 @@ type Discount struct {
 	Label  string `json:"label"`
 }
 
-type ShippingHandling struct {
-	AmountIncludingTax *Money             `json:"amount_including_tax,omitempty"`
-	AmountExcludingTax *Money             `json:"amount_excluding_tax,omitempty"`
-	TotalAmount        *Money             `json:"total_amount"`
-	Taxes              []*TaxItem         `json:"taxes,omitempty"`
-	Discounts          []*ShippingDiscount `json:"discounts,omitempty"`
+type FilterEqualTypeInput struct {
+	Eq *string   `json:"eq,omitempty"`
+	In []*string `json:"in,omitempty"`
 }
 
-type ShippingDiscount struct {
-	Amount *Money `json:"amount"`
+type FilterRangeTypeInput struct {
+	From *string `json:"from,omitempty"`
+	To   *string `json:"to,omitempty"`
+}
+
+type FilterStringTypeInput struct {
+	Eq    *string   `json:"eq,omitempty"`
+	Match *string   `json:"match,omitempty"`
+	In    []*string `json:"in,omitempty"`
+}
+
+type Invoice struct {
+	ID       string                 `json:"id"`
+	Number   string                 `json:"number"`
+	Total    *InvoiceTotal          `json:"total,omitempty"`
+	Items    []InvoiceItemInterface `json:"items,omitempty"`
+	Comments []*SalesCommentItem    `json:"comments,omitempty"`
+}
+
+type InvoiceItem struct {
+	ID               string             `json:"id"`
+	ProductName      *string            `json:"product_name,omitempty"`
+	ProductSku       string             `json:"product_sku"`
+	ProductSalePrice *Money             `json:"product_sale_price"`
+	QuantityInvoiced float64            `json:"quantity_invoiced"`
+	Discounts        []*Discount        `json:"discounts,omitempty"`
+	OrderItem        OrderItemInterface `json:"order_item,omitempty"`
+}
+
+func (InvoiceItem) IsInvoiceItemInterface()           {}
+func (this InvoiceItem) GetID() string                { return this.ID }
+func (this InvoiceItem) GetProductName() *string      { return this.ProductName }
+func (this InvoiceItem) GetProductSku() string        { return this.ProductSku }
+func (this InvoiceItem) GetProductSalePrice() *Money  { return this.ProductSalePrice }
+func (this InvoiceItem) GetQuantityInvoiced() float64 { return this.QuantityInvoiced }
+func (this InvoiceItem) GetDiscounts() []*Discount {
+	if this.Discounts == nil {
+		return nil
+	}
+	interfaceSlice := make([]*Discount, 0, len(this.Discounts))
+	for _, concrete := range this.Discounts {
+		interfaceSlice = append(interfaceSlice, concrete)
+	}
+	return interfaceSlice
+}
+func (this InvoiceItem) GetOrderItem() OrderItemInterface { return this.OrderItem }
+
+type InvoiceTotal struct {
+	GrandTotal       *Money            `json:"grand_total"`
+	Subtotal         *Money            `json:"subtotal"`
+	TotalTax         *Money            `json:"total_tax"`
+	TotalShipping    *Money            `json:"total_shipping"`
+	Taxes            []*TaxItem        `json:"taxes,omitempty"`
+	Discounts        []*Discount       `json:"discounts,omitempty"`
+	ShippingHandling *ShippingHandling `json:"shipping_handling,omitempty"`
+}
+
+type IsEmailAvailableOutput struct {
+	IsEmailAvailable *bool `json:"is_email_available,omitempty"`
 }
 
 type KeyValue struct {
@@ -278,22 +439,98 @@ type KeyValue struct {
 	Value *string `json:"value,omitempty"`
 }
 
+type Money struct {
+	Value    *float64      `json:"value,omitempty"`
+	Currency *CurrencyEnum `json:"currency,omitempty"`
+}
+
+type Mutation struct {
+}
+
 type OrderAddress struct {
-	Firstname  string   `json:"firstname"`
-	Lastname   string   `json:"lastname"`
-	Middlename *string  `json:"middlename,omitempty"`
-	Prefix     *string  `json:"prefix,omitempty"`
-	Suffix     *string  `json:"suffix,omitempty"`
-	Company    *string  `json:"company,omitempty"`
-	Street     []*string `json:"street"`
-	City       string   `json:"city"`
-	Region     *string  `json:"region,omitempty"`
-	RegionID   *int     `json:"region_id,omitempty"`
-	Postcode   *string  `json:"postcode,omitempty"`
+	Firstname   string           `json:"firstname"`
+	Lastname    string           `json:"lastname"`
+	Middlename  *string          `json:"middlename,omitempty"`
+	Prefix      *string          `json:"prefix,omitempty"`
+	Suffix      *string          `json:"suffix,omitempty"`
+	Company     *string          `json:"company,omitempty"`
+	Street      []*string        `json:"street"`
+	City        string           `json:"city"`
+	Region      *string          `json:"region,omitempty"`
+	RegionID    *int             `json:"region_id,omitempty"`
+	Postcode    *string          `json:"postcode,omitempty"`
 	CountryCode *CountryCodeEnum `json:"country_code,omitempty"`
-	Telephone  *string  `json:"telephone,omitempty"`
-	Fax        *string  `json:"fax,omitempty"`
-	VatID      *string  `json:"vat_id,omitempty"`
+	Telephone   *string          `json:"telephone,omitempty"`
+	Fax         *string          `json:"fax,omitempty"`
+	VatID       *string          `json:"vat_id,omitempty"`
+}
+
+type OrderItem struct {
+	ID               string             `json:"id"`
+	ProductName      *string            `json:"product_name,omitempty"`
+	ProductSku       string             `json:"product_sku"`
+	ProductURLKey    *string            `json:"product_url_key,omitempty"`
+	ProductType      *string            `json:"product_type,omitempty"`
+	ProductSalePrice *Money             `json:"product_sale_price"`
+	QuantityOrdered  *float64           `json:"quantity_ordered,omitempty"`
+	QuantityShipped  *float64           `json:"quantity_shipped,omitempty"`
+	QuantityInvoiced *float64           `json:"quantity_invoiced,omitempty"`
+	QuantityRefunded *float64           `json:"quantity_refunded,omitempty"`
+	QuantityCanceled *float64           `json:"quantity_canceled,omitempty"`
+	Status           *string            `json:"status,omitempty"`
+	Discounts        []*Discount        `json:"discounts,omitempty"`
+	EnteredOptions   []*OrderItemOption `json:"entered_options,omitempty"`
+	SelectedOptions  []*OrderItemOption `json:"selected_options,omitempty"`
+}
+
+func (OrderItem) IsOrderItemInterface()              {}
+func (this OrderItem) GetID() string                 { return this.ID }
+func (this OrderItem) GetProductName() *string       { return this.ProductName }
+func (this OrderItem) GetProductSku() string         { return this.ProductSku }
+func (this OrderItem) GetProductURLKey() *string     { return this.ProductURLKey }
+func (this OrderItem) GetProductType() *string       { return this.ProductType }
+func (this OrderItem) GetProductSalePrice() *Money   { return this.ProductSalePrice }
+func (this OrderItem) GetQuantityOrdered() *float64  { return this.QuantityOrdered }
+func (this OrderItem) GetQuantityShipped() *float64  { return this.QuantityShipped }
+func (this OrderItem) GetQuantityInvoiced() *float64 { return this.QuantityInvoiced }
+func (this OrderItem) GetQuantityRefunded() *float64 { return this.QuantityRefunded }
+func (this OrderItem) GetQuantityCanceled() *float64 { return this.QuantityCanceled }
+func (this OrderItem) GetStatus() *string            { return this.Status }
+func (this OrderItem) GetDiscounts() []*Discount {
+	if this.Discounts == nil {
+		return nil
+	}
+	interfaceSlice := make([]*Discount, 0, len(this.Discounts))
+	for _, concrete := range this.Discounts {
+		interfaceSlice = append(interfaceSlice, concrete)
+	}
+	return interfaceSlice
+}
+func (this OrderItem) GetEnteredOptions() []*OrderItemOption {
+	if this.EnteredOptions == nil {
+		return nil
+	}
+	interfaceSlice := make([]*OrderItemOption, 0, len(this.EnteredOptions))
+	for _, concrete := range this.EnteredOptions {
+		interfaceSlice = append(interfaceSlice, concrete)
+	}
+	return interfaceSlice
+}
+func (this OrderItem) GetSelectedOptions() []*OrderItemOption {
+	if this.SelectedOptions == nil {
+		return nil
+	}
+	interfaceSlice := make([]*OrderItemOption, 0, len(this.SelectedOptions))
+	for _, concrete := range this.SelectedOptions {
+		interfaceSlice = append(interfaceSlice, concrete)
+	}
+	return interfaceSlice
+}
+
+type OrderItemOption struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	Value string `json:"value"`
 }
 
 type OrderPaymentMethod struct {
@@ -302,65 +539,29 @@ type OrderPaymentMethod struct {
 	AdditionalData []*KeyValue `json:"additional_data,omitempty"`
 }
 
-// OrderItemInterface is a GraphQL interface implemented by OrderItem
-type OrderItemInterface interface {
-	IsOrderItemInterface()
-	GetID() string
-	GetProductName() *string
-	GetProductSku() string
-	GetProductURLKey() *string
-	GetProductType() *string
-	GetProductSalePrice() *Money
-	GetQuantityOrdered() *float64
-	GetQuantityShipped() *float64
-	GetQuantityInvoiced() *float64
-	GetQuantityRefunded() *float64
-	GetQuantityCanceled() *float64
-	GetStatus() *string
-	GetDiscounts() []*Discount
-	GetEnteredOptions() []*OrderItemOption
-	GetSelectedOptions() []*OrderItemOption
+type OrderShipment struct {
+	ID       string                  `json:"id"`
+	Number   string                  `json:"number"`
+	Tracking []*ShipmentTracking     `json:"tracking,omitempty"`
+	Items    []ShipmentItemInterface `json:"items,omitempty"`
+	Comments []*SalesCommentItem     `json:"comments,omitempty"`
 }
 
-type OrderItem struct {
-	ID               string            `json:"id"`
-	ProductName      *string           `json:"product_name,omitempty"`
-	ProductSku       string            `json:"product_sku"`
-	ProductURLKey    *string           `json:"product_url_key,omitempty"`
-	ProductType      *string           `json:"product_type,omitempty"`
-	ProductSalePrice *Money            `json:"product_sale_price"`
-	QuantityOrdered  *float64          `json:"quantity_ordered,omitempty"`
-	QuantityShipped  *float64          `json:"quantity_shipped,omitempty"`
-	QuantityInvoiced *float64          `json:"quantity_invoiced,omitempty"`
-	QuantityRefunded *float64          `json:"quantity_refunded,omitempty"`
-	QuantityCanceled *float64          `json:"quantity_canceled,omitempty"`
-	Status           *string           `json:"status,omitempty"`
+type OrderTotal struct {
+	GrandTotal       *Money            `json:"grand_total"`
+	Subtotal         *Money            `json:"subtotal"`
+	TotalTax         *Money            `json:"total_tax"`
+	TotalShipping    *Money            `json:"total_shipping"`
+	Taxes            []*TaxItem        `json:"taxes,omitempty"`
 	Discounts        []*Discount       `json:"discounts,omitempty"`
-	EnteredOptions   []*OrderItemOption `json:"entered_options,omitempty"`
-	SelectedOptions  []*OrderItemOption `json:"selected_options,omitempty"`
+	ShippingHandling *ShippingHandling `json:"shipping_handling,omitempty"`
 }
 
-func (OrderItem) IsOrderItemInterface() {}
-func (v OrderItem) GetID() string { return v.ID }
-func (v OrderItem) GetProductName() *string { return v.ProductName }
-func (v OrderItem) GetProductSku() string { return v.ProductSku }
-func (v OrderItem) GetProductURLKey() *string { return v.ProductURLKey }
-func (v OrderItem) GetProductType() *string { return v.ProductType }
-func (v OrderItem) GetProductSalePrice() *Money { return v.ProductSalePrice }
-func (v OrderItem) GetQuantityOrdered() *float64 { return v.QuantityOrdered }
-func (v OrderItem) GetQuantityShipped() *float64 { return v.QuantityShipped }
-func (v OrderItem) GetQuantityInvoiced() *float64 { return v.QuantityInvoiced }
-func (v OrderItem) GetQuantityRefunded() *float64 { return v.QuantityRefunded }
-func (v OrderItem) GetQuantityCanceled() *float64 { return v.QuantityCanceled }
-func (v OrderItem) GetStatus() *string { return v.Status }
-func (v OrderItem) GetDiscounts() []*Discount { return v.Discounts }
-func (v OrderItem) GetEnteredOptions() []*OrderItemOption { return v.EnteredOptions }
-func (v OrderItem) GetSelectedOptions() []*OrderItemOption { return v.SelectedOptions }
+type Query struct {
+}
 
-type OrderItemOption struct {
-	ID    string `json:"id"`
-	Label string `json:"label"`
-	Value string `json:"value"`
+type RevokeCustomerTokenOutput struct {
+	Result bool `json:"result"`
 }
 
 type SalesCommentItem struct {
@@ -368,63 +569,26 @@ type SalesCommentItem struct {
 	Timestamp string `json:"timestamp"`
 }
 
-// Invoice types
-type Invoice struct {
-	ID       string                 `json:"id"`
-	Number   string                 `json:"number"`
-	Total    *InvoiceTotal          `json:"total,omitempty"`
-	Items    []InvoiceItemInterface  `json:"items,omitempty"`
-	Comments []*SalesCommentItem    `json:"comments,omitempty"`
+type SearchResultPageInfo struct {
+	CurrentPage *int `json:"current_page,omitempty"`
+	PageSize    *int `json:"page_size,omitempty"`
+	TotalPages  *int `json:"total_pages,omitempty"`
 }
 
-type InvoiceTotal struct {
-	GrandTotal      *Money            `json:"grand_total"`
-	Subtotal        *Money            `json:"subtotal"`
-	TotalTax        *Money            `json:"total_tax"`
-	TotalShipping   *Money            `json:"total_shipping"`
-	Taxes           []*TaxItem        `json:"taxes,omitempty"`
-	Discounts       []*Discount       `json:"discounts,omitempty"`
-	ShippingHandling *ShippingHandling `json:"shipping_handling,omitempty"`
+type ShipmentItem struct {
+	ID              string             `json:"id"`
+	ProductName     *string            `json:"product_name,omitempty"`
+	ProductSku      string             `json:"product_sku"`
+	QuantityShipped float64            `json:"quantity_shipped"`
+	OrderItem       OrderItemInterface `json:"order_item,omitempty"`
 }
 
-type InvoiceItemInterface interface {
-	IsInvoiceItemInterface()
-	GetID() string
-	GetProductName() *string
-	GetProductSku() string
-	GetProductSalePrice() *Money
-	GetQuantityInvoiced() float64
-	GetDiscounts() []*Discount
-	GetOrderItem() OrderItemInterface
-}
-
-type InvoiceItem struct {
-	ID               string           `json:"id"`
-	ProductName      *string          `json:"product_name,omitempty"`
-	ProductSku       string           `json:"product_sku"`
-	ProductSalePrice *Money           `json:"product_sale_price"`
-	QuantityInvoiced float64          `json:"quantity_invoiced"`
-	Discounts        []*Discount      `json:"discounts,omitempty"`
-	OrderItem        OrderItemInterface `json:"order_item,omitempty"`
-}
-
-func (InvoiceItem) IsInvoiceItemInterface() {}
-func (v InvoiceItem) GetID() string { return v.ID }
-func (v InvoiceItem) GetProductName() *string { return v.ProductName }
-func (v InvoiceItem) GetProductSku() string { return v.ProductSku }
-func (v InvoiceItem) GetProductSalePrice() *Money { return v.ProductSalePrice }
-func (v InvoiceItem) GetQuantityInvoiced() float64 { return v.QuantityInvoiced }
-func (v InvoiceItem) GetDiscounts() []*Discount { return v.Discounts }
-func (v InvoiceItem) GetOrderItem() OrderItemInterface { return v.OrderItem }
-
-// Shipment types
-type OrderShipment struct {
-	ID       string                  `json:"id"`
-	Number   string                  `json:"number"`
-	Tracking []*ShipmentTracking     `json:"tracking,omitempty"`
-	Items    []ShipmentItemInterface  `json:"items,omitempty"`
-	Comments []*SalesCommentItem     `json:"comments,omitempty"`
-}
+func (ShipmentItem) IsShipmentItemInterface()              {}
+func (this ShipmentItem) GetID() string                    { return this.ID }
+func (this ShipmentItem) GetProductName() *string          { return this.ProductName }
+func (this ShipmentItem) GetProductSku() string            { return this.ProductSku }
+func (this ShipmentItem) GetQuantityShipped() float64      { return this.QuantityShipped }
+func (this ShipmentItem) GetOrderItem() OrderItemInterface { return this.OrderItem }
 
 type ShipmentTracking struct {
 	Title   string  `json:"title"`
@@ -432,78 +596,23 @@ type ShipmentTracking struct {
 	Number  *string `json:"number,omitempty"`
 }
 
-type ShipmentItemInterface interface {
-	IsShipmentItemInterface()
-	GetID() string
-	GetProductName() *string
-	GetProductSku() string
-	GetQuantityShipped() float64
-	GetOrderItem() OrderItemInterface
+type ShippingDiscount struct {
+	Amount *Money `json:"amount"`
 }
 
-type ShipmentItem struct {
-	ID              string           `json:"id"`
-	ProductName     *string          `json:"product_name,omitempty"`
-	ProductSku      string           `json:"product_sku"`
-	QuantityShipped float64          `json:"quantity_shipped"`
-	OrderItem       OrderItemInterface `json:"order_item,omitempty"`
+type ShippingHandling struct {
+	AmountIncludingTax *Money              `json:"amount_including_tax,omitempty"`
+	AmountExcludingTax *Money              `json:"amount_excluding_tax,omitempty"`
+	TotalAmount        *Money              `json:"total_amount"`
+	Taxes              []*TaxItem          `json:"taxes,omitempty"`
+	Discounts          []*ShippingDiscount `json:"discounts,omitempty"`
 }
 
-func (ShipmentItem) IsShipmentItemInterface() {}
-func (v ShipmentItem) GetID() string { return v.ID }
-func (v ShipmentItem) GetProductName() *string { return v.ProductName }
-func (v ShipmentItem) GetProductSku() string { return v.ProductSku }
-func (v ShipmentItem) GetQuantityShipped() float64 { return v.QuantityShipped }
-func (v ShipmentItem) GetOrderItem() OrderItemInterface { return v.OrderItem }
-
-// Credit memo types
-type CreditMemo struct {
-	ID       string                   `json:"id"`
-	Number   string                   `json:"number"`
-	Total    *CreditMemoTotal         `json:"total,omitempty"`
-	Items    []CreditMemoItemInterface `json:"items,omitempty"`
-	Comments []*SalesCommentItem      `json:"comments,omitempty"`
+type TaxItem struct {
+	Amount *Money  `json:"amount"`
+	Title  string  `json:"title"`
+	Rate   float64 `json:"rate"`
 }
-
-type CreditMemoTotal struct {
-	GrandTotal      *Money            `json:"grand_total"`
-	Subtotal        *Money            `json:"subtotal"`
-	TotalTax        *Money            `json:"total_tax"`
-	TotalShipping   *Money            `json:"total_shipping"`
-	Taxes           []*TaxItem        `json:"taxes,omitempty"`
-	Discounts       []*Discount       `json:"discounts,omitempty"`
-	ShippingHandling *ShippingHandling `json:"shipping_handling,omitempty"`
-}
-
-type CreditMemoItemInterface interface {
-	IsCreditMemoItemInterface()
-	GetID() string
-	GetProductName() *string
-	GetProductSku() string
-	GetProductSalePrice() *Money
-	GetQuantityRefunded() float64
-	GetDiscounts() []*Discount
-	GetOrderItem() OrderItemInterface
-}
-
-type CreditMemoItem struct {
-	ID               string           `json:"id"`
-	ProductName      *string          `json:"product_name,omitempty"`
-	ProductSku       string           `json:"product_sku"`
-	ProductSalePrice *Money           `json:"product_sale_price"`
-	QuantityRefunded float64          `json:"quantity_refunded"`
-	Discounts        []*Discount      `json:"discounts,omitempty"`
-	OrderItem        OrderItemInterface `json:"order_item,omitempty"`
-}
-
-func (CreditMemoItem) IsCreditMemoItemInterface() {}
-func (v CreditMemoItem) GetID() string { return v.ID }
-func (v CreditMemoItem) GetProductName() *string { return v.ProductName }
-func (v CreditMemoItem) GetProductSku() string { return v.ProductSku }
-func (v CreditMemoItem) GetProductSalePrice() *Money { return v.ProductSalePrice }
-func (v CreditMemoItem) GetQuantityRefunded() float64 { return v.QuantityRefunded }
-func (v CreditMemoItem) GetDiscounts() []*Discount { return v.Discounts }
-func (v CreditMemoItem) GetOrderItem() OrderItemInterface { return v.OrderItem }
 
 type ConfirmationStatusEnum string
 
@@ -1137,7 +1246,7 @@ const (
 	CurrencyEnumPhp CurrencyEnum = "PHP"
 	CurrencyEnumThb CurrencyEnum = "THB"
 	CurrencyEnumMyr CurrencyEnum = "MYR"
-	CurrencyEnumIdr CurrencyEnum = "IDR"
+	CurrencyEnumIDR CurrencyEnum = "IDR"
 	CurrencyEnumAed CurrencyEnum = "AED"
 	CurrencyEnumSar CurrencyEnum = "SAR"
 	CurrencyEnumQar CurrencyEnum = "QAR"
@@ -1168,7 +1277,7 @@ const (
 	CurrencyEnumLkr CurrencyEnum = "LKR"
 	CurrencyEnumNpr CurrencyEnum = "NPR"
 	CurrencyEnumMmk CurrencyEnum = "MMK"
-	CurrencyEnumKhm CurrencyEnum = "KHM"
+	CurrencyEnumKhr CurrencyEnum = "KHR"
 	CurrencyEnumLak CurrencyEnum = "LAK"
 	CurrencyEnumVnd CurrencyEnum = "VND"
 	CurrencyEnumMop CurrencyEnum = "MOP"
@@ -1207,7 +1316,7 @@ var AllCurrencyEnum = []CurrencyEnum{
 	CurrencyEnumPhp,
 	CurrencyEnumThb,
 	CurrencyEnumMyr,
-	CurrencyEnumIdr,
+	CurrencyEnumIDR,
 	CurrencyEnumAed,
 	CurrencyEnumSar,
 	CurrencyEnumQar,
@@ -1238,7 +1347,7 @@ var AllCurrencyEnum = []CurrencyEnum{
 	CurrencyEnumLkr,
 	CurrencyEnumNpr,
 	CurrencyEnumMmk,
-	CurrencyEnumKhm,
+	CurrencyEnumKhr,
 	CurrencyEnumLak,
 	CurrencyEnumVnd,
 	CurrencyEnumMop,
@@ -1247,7 +1356,7 @@ var AllCurrencyEnum = []CurrencyEnum{
 
 func (e CurrencyEnum) IsValid() bool {
 	switch e {
-	case CurrencyEnumUsd, CurrencyEnumEur, CurrencyEnumGbp, CurrencyEnumCad, CurrencyEnumAud, CurrencyEnumJpy, CurrencyEnumCny, CurrencyEnumChf, CurrencyEnumSek, CurrencyEnumNok, CurrencyEnumDkk, CurrencyEnumNzd, CurrencyEnumMxn, CurrencyEnumSgd, CurrencyEnumHkd, CurrencyEnumInr, CurrencyEnumBrl, CurrencyEnumZar, CurrencyEnumRub, CurrencyEnumKrw, CurrencyEnumTry, CurrencyEnumPln, CurrencyEnumCzk, CurrencyEnumHuf, CurrencyEnumRon, CurrencyEnumBgn, CurrencyEnumHrk, CurrencyEnumIls, CurrencyEnumPhp, CurrencyEnumThb, CurrencyEnumMyr, CurrencyEnumIdr, CurrencyEnumAed, CurrencyEnumSar, CurrencyEnumQar, CurrencyEnumKwd, CurrencyEnumBhd, CurrencyEnumOmr, CurrencyEnumJod, CurrencyEnumLbp, CurrencyEnumEgp, CurrencyEnumMad, CurrencyEnumTnd, CurrencyEnumDzd, CurrencyEnumLyd, CurrencyEnumNgn, CurrencyEnumGhs, CurrencyEnumKes, CurrencyEnumTzs, CurrencyEnumUgx, CurrencyEnumEtb, CurrencyEnumUah, CurrencyEnumGel, CurrencyEnumAmd, CurrencyEnumAzn, CurrencyEnumKzt, CurrencyEnumUzs, CurrencyEnumBdt, CurrencyEnumPkr, CurrencyEnumLkr, CurrencyEnumNpr, CurrencyEnumMmk, CurrencyEnumKhm, CurrencyEnumLak, CurrencyEnumVnd, CurrencyEnumMop, CurrencyEnumTwd:
+	case CurrencyEnumUsd, CurrencyEnumEur, CurrencyEnumGbp, CurrencyEnumCad, CurrencyEnumAud, CurrencyEnumJpy, CurrencyEnumCny, CurrencyEnumChf, CurrencyEnumSek, CurrencyEnumNok, CurrencyEnumDkk, CurrencyEnumNzd, CurrencyEnumMxn, CurrencyEnumSgd, CurrencyEnumHkd, CurrencyEnumInr, CurrencyEnumBrl, CurrencyEnumZar, CurrencyEnumRub, CurrencyEnumKrw, CurrencyEnumTry, CurrencyEnumPln, CurrencyEnumCzk, CurrencyEnumHuf, CurrencyEnumRon, CurrencyEnumBgn, CurrencyEnumHrk, CurrencyEnumIls, CurrencyEnumPhp, CurrencyEnumThb, CurrencyEnumMyr, CurrencyEnumIDR, CurrencyEnumAed, CurrencyEnumSar, CurrencyEnumQar, CurrencyEnumKwd, CurrencyEnumBhd, CurrencyEnumOmr, CurrencyEnumJod, CurrencyEnumLbp, CurrencyEnumEgp, CurrencyEnumMad, CurrencyEnumTnd, CurrencyEnumDzd, CurrencyEnumLyd, CurrencyEnumNgn, CurrencyEnumGhs, CurrencyEnumKes, CurrencyEnumTzs, CurrencyEnumUgx, CurrencyEnumEtb, CurrencyEnumUah, CurrencyEnumGel, CurrencyEnumAmd, CurrencyEnumAzn, CurrencyEnumKzt, CurrencyEnumUzs, CurrencyEnumBdt, CurrencyEnumPkr, CurrencyEnumLkr, CurrencyEnumNpr, CurrencyEnumMmk, CurrencyEnumKhr, CurrencyEnumLak, CurrencyEnumVnd, CurrencyEnumMop, CurrencyEnumTwd:
 		return true
 	}
 	return false

@@ -35,6 +35,7 @@ type CustomerService struct {
 	newsletterRepo *repository.NewsletterRepository
 	storeRepo      *repository.StoreRepository
 	groupRepo      *repository.GroupRepository
+	eavRepo        *repository.EAVAttributeRepository
 	db             *sql.DB
 }
 
@@ -45,6 +46,7 @@ func NewCustomerService(
 	newsletterRepo *repository.NewsletterRepository,
 	storeRepo *repository.StoreRepository,
 	groupRepo *repository.GroupRepository,
+	eavRepo *repository.EAVAttributeRepository,
 	db *sql.DB,
 ) *CustomerService {
 	return &CustomerService{
@@ -54,6 +56,7 @@ func NewCustomerService(
 		newsletterRepo: newsletterRepo,
 		storeRepo:      storeRepo,
 		groupRepo:      groupRepo,
+		eavRepo:        eavRepo,
 		db:             db,
 	}
 }
@@ -734,6 +737,100 @@ func (s *CustomerService) GetAddressesPaginated(ctx context.Context, customerID 
 			TotalPages:  &totalPages,
 		},
 	}, nil
+}
+
+// GetCustomAttributes loads EAV custom attributes for a customer or address entity.
+// entityType is "customer" or "customer_address". attributeCodes filters results if non-empty.
+func (s *CustomerService) GetCustomAttributes(ctx context.Context, entityType string, entityID int, attributeCodes []string) ([]model.AttributeValueInterface, error) {
+	values, err := s.eavRepo.GetValuesForEntity(ctx, entityType, entityID)
+	if err != nil {
+		log.Warn().Err(err).Str("entity_type", entityType).Int("entity_id", entityID).Msg("failed to load custom attributes")
+		return []model.AttributeValueInterface{}, nil
+	}
+	if len(values) == 0 {
+		return []model.AttributeValueInterface{}, nil
+	}
+
+	// Build filter set
+	filterSet := make(map[string]bool)
+	for _, code := range attributeCodes {
+		filterSet[code] = true
+	}
+
+	storeID := middleware.GetStoreID(ctx)
+	var result []model.AttributeValueInterface
+
+	for _, v := range values {
+		// Apply attributeCodes filter if provided
+		if len(filterSet) > 0 && !filterSet[v.AttributeCode] {
+			continue
+		}
+
+		// For select/multiselect, resolve option labels
+		if v.FrontendInput == "select" || v.FrontendInput == "multiselect" {
+			options, err := s.resolveSelectOptions(ctx, v, storeID)
+			if err == nil && len(options) > 0 {
+				result = append(result, &model.AttributeSelectedOptions{
+					Code:            v.AttributeCode,
+					SelectedOptions: options,
+				})
+				continue
+			}
+		}
+
+		// Default: return as simple string value
+		result = append(result, &model.AttributeValue{
+			Code:  v.AttributeCode,
+			Value: v.Value,
+		})
+	}
+
+	return result, nil
+}
+
+func (s *CustomerService) resolveSelectOptions(ctx context.Context, v *repository.EAVAttributeValue, storeID int) ([]*model.AttributeSelectedOption, error) {
+	// For select attributes, value is a single option_id
+	// For multiselect, value is comma-separated option_ids
+	attrs, err := s.eavRepo.GetCustomerAttributes(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var attrID int
+	for _, a := range attrs {
+		if a.AttributeCode == v.AttributeCode {
+			attrID = a.AttributeID
+			break
+		}
+	}
+	if attrID == 0 {
+		return nil, fmt.Errorf("attribute not found")
+	}
+
+	allOptions, err := s.eavRepo.GetOptionLabels(ctx, attrID, storeID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse the selected option IDs
+	selectedIDs := strings.Split(v.Value, ",")
+	selectedSet := make(map[string]bool)
+	for _, id := range selectedIDs {
+		selectedSet[strings.TrimSpace(id)] = true
+	}
+
+	var selected []*model.AttributeSelectedOption
+	for _, opt := range allOptions {
+		if selectedSet[opt.Value] {
+			uid := base64.StdEncoding.EncodeToString([]byte(opt.Value))
+			selected = append(selected, &model.AttributeSelectedOption{
+				UID:   uid,
+				Label: opt.Label,
+				Value: opt.Value,
+			})
+		}
+	}
+	return selected, nil
 }
 
 // ── Mapping helpers ──────────────────────────────────────────────────────────

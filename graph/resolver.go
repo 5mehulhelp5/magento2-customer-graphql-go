@@ -23,10 +23,11 @@ func NewResolver(db *sql.DB, jwtManager *jwt.Manager) (*Resolver, error) {
 	newsletterRepo := repository.NewNewsletterRepository(db)
 	storeRepo := repository.NewStoreRepository(db)
 	groupRepo := repository.NewGroupRepository(db)
+	eavRepo := repository.NewEAVAttributeRepository(db)
 	orderRepo := repository.NewOrderRepository(db)
 
 	customerService := service.NewCustomerService(
-		customerRepo, addressRepo, tokenRepo, newsletterRepo, storeRepo, groupRepo, db,
+		customerRepo, addressRepo, tokenRepo, newsletterRepo, storeRepo, groupRepo, eavRepo, db,
 	)
 	orderService := service.NewOrderService(orderRepo)
 
@@ -35,8 +36,3 @@ func NewResolver(db *sql.DB, jwtManager *jwt.Manager) (*Resolver, error) {
 		OrderService:    orderService,
 	}, nil
 }
-
-// Customer returns the CustomerResolver implementation.
-func (r *Resolver) Customer() CustomerResolver { return &customerResolver{r} }
-
-type customerResolver struct{ *Resolver }
