@@ -92,6 +92,8 @@ type Customer {
     group_id: Int @deprecated(reason: "Use 'group' instead.")
     group: CustomerGroup
     orders(filter: CustomerOrdersFilterInput, currentPage: Int = 1, pageSize: Int = 20, sort: CustomerOrderSortInput): CustomerOrders
+    """Custom EAV attributes. Optionally filter by attribute codes."""
+    custom_attributes(attributeCodes: [ID!]): [AttributeValueInterface]
 }
 
 type CustomerAddress {
@@ -116,6 +118,14 @@ type CustomerAddress {
     vat_id: String
     default_shipping: Boolean
     default_billing: Boolean
+    custom_attributes: [CustomerAddressAttribute] @deprecated(reason: "Use 'custom_attributesV2' instead.")
+    """Custom EAV attributes. Optionally filter by attribute codes."""
+    custom_attributesV2(attributeCodes: [ID!]): [AttributeValueInterface!]!
+}
+
+type CustomerAddressAttribute {
+    attribute_code: String!
+    value: String!
 }
 
 type CustomerAddresses {
@@ -160,6 +170,32 @@ type CustomerGroup {
     name: String!
 }
 
+# ─── EAV Attribute Value Types ───────────────────────────────────────────────
+
+"""Interface for custom EAV attribute values."""
+interface AttributeValueInterface {
+    """The attribute code."""
+    code: ID!
+}
+
+"""Simple string attribute value."""
+type AttributeValue implements AttributeValueInterface {
+    code: ID!
+    value: String!
+}
+
+"""Attribute value with selected options (for select/multiselect)."""
+type AttributeSelectedOptions implements AttributeValueInterface {
+    code: ID!
+    selected_options: [AttributeSelectedOption!]!
+}
+
+type AttributeSelectedOption {
+    uid: ID!
+    label: String!
+    value: String!
+}
+
 # ─── Input Types ─────────────────────────────────────────────────────────────
 
 input CustomerCreateInput {
@@ -174,6 +210,7 @@ input CustomerCreateInput {
     taxvat: String
     gender: Int
     is_subscribed: Boolean
+    custom_attributes: [AttributeValueInput!]
 }
 
 input CustomerUpdateInput {
@@ -186,6 +223,13 @@ input CustomerUpdateInput {
     taxvat: String
     gender: Int
     is_subscribed: Boolean
+    custom_attributes: [AttributeValueInput!]
+}
+
+input AttributeValueInput {
+    attribute_code: String!
+    value: String
+    selected_options: [ID!]
 }
 
 """Deprecated: Use CustomerCreateInput/CustomerUpdateInput instead."""

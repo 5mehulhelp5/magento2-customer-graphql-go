@@ -28,3 +28,9 @@ models:
     fields:
       orders:
         resolver: true
+      custom_attributes:
+        resolver: true
+  CustomerAddress:
+    fields:
+      custom_attributesV2:
+        resolver: true
