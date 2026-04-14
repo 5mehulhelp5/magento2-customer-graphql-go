@@ -30,7 +30,13 @@ models:
         resolver: true
       custom_attributes:
         resolver: true
+      wishlist:
+        resolver: true
   CustomerAddress:
     fields:
       custom_attributesV2:
+        resolver: true
+  Wishlist:
+    fields:
+      items_v2:
         resolver: true

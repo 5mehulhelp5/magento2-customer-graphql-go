@@ -55,6 +55,12 @@ type Mutation {
     """Reset customer password using a reset token."""
     resetPassword(email: String!, resetPasswordToken: String!, newPassword: String!): Boolean
 
+    """Add products to the customer wishlist."""
+    addProductsToWishlist(wishlistId: ID!, wishlistItems: [WishlistItemInput!]!): AddProductsToWishlistOutput
+
+    """Remove products from the customer wishlist."""
+    removeProductsFromWishlist(wishlistId: ID!, wishlistItemsIds: [ID!]!): RemoveProductsFromWishlistOutput
+
     """Confirm a customer email address using a confirmation key."""
     confirmEmail(input: ConfirmEmailInput!): CustomerOutput
 
@@ -94,6 +100,8 @@ type Customer {
     orders(filter: CustomerOrdersFilterInput, currentPage: Int = 1, pageSize: Int = 20, sort: CustomerOrderSortInput): CustomerOrders
     """Custom EAV attributes. Optionally filter by attribute codes."""
     custom_attributes(attributeCodes: [ID!]): [AttributeValueInterface]
+    """The customer's wishlist."""
+    wishlist: Wishlist
 }
 
 type CustomerAddress {
@@ -196,7 +204,69 @@ type AttributeSelectedOption {
     value: String!
 }
 
+# ─── Wishlist Types ──────────────────────────────────────────────────────────
+
+type Wishlist {
+    id: ID!
+    items_count: Int!
+    items_v2(pageSize: Int, currentPage: Int): WishlistItems!
+}
+
+type WishlistItems {
+    items: [WishlistItem!]!
+    page_info: SearchResultPageInfo!
+}
+
+type WishlistItem {
+    id: ID!
+    quantity: Float!
+    added_at: String!
+    description: String
+    product: WishlistItemProduct!
+}
+
+type WishlistItemProduct {
+    sku: String!
+    name: String!
+    url_key: String!
+    thumbnail: WishlistItemThumbnail
+    price_range: WishlistItemPriceRange!
+}
+
+type WishlistItemThumbnail {
+    url: String
+    label: String
+}
+
+type WishlistItemPriceRange {
+    minimum_price: WishlistItemMinPrice!
+}
+
+type WishlistItemMinPrice {
+    final_price: Money!
+}
+
+type AddProductsToWishlistOutput {
+    wishlist: Wishlist!
+    user_errors: [WishlistUserInputError!]!
+}
+
+type RemoveProductsFromWishlistOutput {
+    wishlist: Wishlist!
+    user_errors: [WishlistUserInputError!]!
+}
+
+type WishlistUserInputError {
+    code: WishlistUserInputErrorType!
+    message: String!
+}
+
 # ─── Input Types ─────────────────────────────────────────────────────────────
+
+input WishlistItemInput {
+    sku: String!
+    quantity: Float!
+}
 
 input CustomerCreateInput {
     firstname: String!
@@ -280,6 +350,11 @@ input ConfirmEmailInput {
 }
 
 # ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum WishlistUserInputErrorType {
+    PRODUCT_NOT_FOUND
+    UNDEFINED
+}
 
 enum ConfirmationStatusEnum {
     ACCOUNT_CONFIRMED

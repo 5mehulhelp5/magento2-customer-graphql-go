@@ -66,6 +66,11 @@ type ShipmentItemInterface interface {
 	GetOrderItem() OrderItemInterface
 }
 
+type AddProductsToWishlistOutput struct {
+	Wishlist   *Wishlist                 `json:"wishlist"`
+	UserErrors []*WishlistUserInputError `json:"user_errors"`
+}
+
 type AttributeSelectedOption struct {
 	UID   string `json:"uid"`
 	Label string `json:"label"`
@@ -175,6 +180,8 @@ type Customer struct {
 	Orders             *CustomerOrders        `json:"orders,omitempty"`
 	// Custom EAV attributes. Optionally filter by attribute codes.
 	CustomAttributes []AttributeValueInterface `json:"custom_attributes,omitempty"`
+	// The customer's wishlist.
+	Wishlist *Wishlist `json:"wishlist,omitempty"`
 }
 
 type CustomerAddress struct {
@@ -560,6 +567,11 @@ type OrderTotal struct {
 type Query struct {
 }
 
+type RemoveProductsFromWishlistOutput struct {
+	Wishlist   *Wishlist                 `json:"wishlist"`
+	UserErrors []*WishlistUserInputError `json:"user_errors"`
+}
+
 type RevokeCustomerTokenOutput struct {
 	Result bool `json:"result"`
 }
@@ -612,6 +624,56 @@ type TaxItem struct {
 	Amount *Money  `json:"amount"`
 	Title  string  `json:"title"`
 	Rate   float64 `json:"rate"`
+}
+
+type Wishlist struct {
+	ID         string         `json:"id"`
+	ItemsCount int            `json:"items_count"`
+	ItemsV2    *WishlistItems `json:"items_v2"`
+}
+
+type WishlistItem struct {
+	ID          string               `json:"id"`
+	Quantity    float64              `json:"quantity"`
+	AddedAt     string               `json:"added_at"`
+	Description *string              `json:"description,omitempty"`
+	Product     *WishlistItemProduct `json:"product"`
+}
+
+type WishlistItemInput struct {
+	Sku      string  `json:"sku"`
+	Quantity float64 `json:"quantity"`
+}
+
+type WishlistItemMinPrice struct {
+	FinalPrice *Money `json:"final_price"`
+}
+
+type WishlistItemPriceRange struct {
+	MinimumPrice *WishlistItemMinPrice `json:"minimum_price"`
+}
+
+type WishlistItemProduct struct {
+	Sku        string                  `json:"sku"`
+	Name       string                  `json:"name"`
+	URLKey     string                  `json:"url_key"`
+	Thumbnail  *WishlistItemThumbnail  `json:"thumbnail,omitempty"`
+	PriceRange *WishlistItemPriceRange `json:"price_range"`
+}
+
+type WishlistItemThumbnail struct {
+	URL   *string `json:"url,omitempty"`
+	Label *string `json:"label,omitempty"`
+}
+
+type WishlistItems struct {
+	Items    []*WishlistItem       `json:"items"`
+	PageInfo *SearchResultPageInfo `json:"page_info"`
+}
+
+type WishlistUserInputError struct {
+	Code    WishlistUserInputErrorType `json:"code"`
+	Message string                     `json:"message"`
 }
 
 type ConfirmationStatusEnum string
@@ -1447,6 +1509,61 @@ func (e *SortEnum) UnmarshalJSON(b []byte) error {
 }
 
 func (e SortEnum) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type WishlistUserInputErrorType string
+
+const (
+	WishlistUserInputErrorTypeProductNotFound WishlistUserInputErrorType = "PRODUCT_NOT_FOUND"
+	WishlistUserInputErrorTypeUndefined       WishlistUserInputErrorType = "UNDEFINED"
+)
+
+var AllWishlistUserInputErrorType = []WishlistUserInputErrorType{
+	WishlistUserInputErrorTypeProductNotFound,
+	WishlistUserInputErrorTypeUndefined,
+}
+
+func (e WishlistUserInputErrorType) IsValid() bool {
+	switch e {
+	case WishlistUserInputErrorTypeProductNotFound, WishlistUserInputErrorTypeUndefined:
+		return true
+	}
+	return false
+}
+
+func (e WishlistUserInputErrorType) String() string {
+	return string(e)
+}
+
+func (e *WishlistUserInputErrorType) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = WishlistUserInputErrorType(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid WishlistUserInputErrorType", str)
+	}
+	return nil
+}
+
+func (e WishlistUserInputErrorType) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *WishlistUserInputErrorType) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e WishlistUserInputErrorType) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil
