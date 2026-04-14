@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	"net/url"
+	"os"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -14,8 +16,9 @@ import (
 	"github.com/magendooro/magento2-go-common/mgerrors"
 
 	"github.com/magendooro/magento2-customer-graphql-go/graph/model"
-	"github.com/magendooro/magento2-go-common/middleware"
 	"github.com/magendooro/magento2-go-common/config"
+	"github.com/magendooro/magento2-go-common/emailclient"
+	"github.com/magendooro/magento2-go-common/middleware"
 	"github.com/magendooro/magento2-customer-graphql-go/internal/repository"
 )
 
@@ -36,6 +39,7 @@ type CustomerService struct {
 	groupRepo      *repository.GroupRepository
 	eavRepo        *repository.EAVAttributeRepository
 	cp             *config.ConfigProvider
+	email          *emailclient.Client
 }
 
 func NewCustomerService(
@@ -57,6 +61,7 @@ func NewCustomerService(
 		groupRepo:      groupRepo,
 		eavRepo:        eavRepo,
 		cp:             cp,
+		email:          emailclient.NewFromEnv(),
 	}
 }
 
@@ -254,6 +259,23 @@ func (s *CustomerService) CreateCustomer(ctx context.Context, input model.Custom
 	}
 
 	result := s.mapCustomer(customer)
+
+	// Send welcome email (fire-and-forget — never blocks or rolls back registration)
+	firstName := ""
+	if input.Firstname != "" {
+		firstName = input.Firstname
+	}
+	s.email.Send(emailclient.Request{
+		ToEmail:       input.Email,
+		ToName:        firstName + " " + input.Lastname,
+		Subject:       "Welcome to Magendoo!",
+		BodyHTML:      "<h1>Welcome, " + firstName + "!</h1><p>Thank you for creating an account.</p>",
+		BodyText:      "Welcome, " + firstName + "! Thank you for creating an account.",
+		TemplateID:    "customer_welcome",
+		TemplateVars:  map[string]any{"first_name": firstName, "last_name": input.Lastname, "email": input.Email},
+		SourceService: "customer",
+	})
+
 	return &model.CustomerOutput{Customer: result}, nil
 }
 
@@ -546,7 +568,22 @@ func (s *CustomerService) RequestPasswordResetEmail(ctx context.Context, email s
 		return false, fmt.Errorf("failed to store reset token: %w", err)
 	}
 
-	log.Info().Str("email", email).Msg("password reset token generated (email sending not implemented)")
+	storefrontURL := os.Getenv("STOREFRONT_URL")
+	resetURL := storefrontURL + "/reset-password?token=" + url.QueryEscape(rpToken) + "&email=" + url.QueryEscape(email)
+
+	s.email.Send(emailclient.Request{
+		ToEmail:    email,
+		Subject:    "Reset your Magendoo password",
+		BodyHTML:   "<p>Click the link below to reset your password. This link expires in 24 hours.</p><p><a href=\"" + resetURL + "\">Reset Password</a></p>",
+		BodyText:   "To reset your password, visit: " + resetURL + "\n\nThis link expires in 24 hours.",
+		TemplateID: "customer_password_reset",
+		TemplateVars: map[string]any{
+			"email":     email,
+			"reset_url": resetURL,
+		},
+		SourceService: "customer",
+	})
+
 	return true, nil
 }
 
@@ -648,7 +685,21 @@ func (s *CustomerService) ResendConfirmationEmail(ctx context.Context, email str
 		return true, nil
 	}
 
-	log.Info().Str("email", email).Msg("resend confirmation email requested (email sending not implemented)")
+	// Email found — send confirmation resend (fire-and-forget)
+	storefrontURL := os.Getenv("STOREFRONT_URL")
+	customer, _ := s.customerRepo.GetByEmail(ctx, email, websiteID)
+	if customer != nil && customer.Confirmation != nil && *customer.Confirmation != "" {
+		confirmURL := storefrontURL + "/confirm-email?email=" + url.QueryEscape(email) + "&key=" + url.QueryEscape(*customer.Confirmation)
+		s.email.Send(emailclient.Request{
+			ToEmail:       email,
+			Subject:       "Confirm your Magendoo email address",
+			BodyHTML:      "<p>Please confirm your email address by clicking the link below:</p><p><a href=\"" + confirmURL + "\">Confirm Email</a></p>",
+			BodyText:      "Please confirm your email address by visiting: " + confirmURL,
+			TemplateID:    "customer_email_confirmation",
+			TemplateVars:  map[string]any{"email": email, "confirm_url": confirmURL},
+			SourceService: "customer",
+		})
+	}
 	return true, nil
 }
 
