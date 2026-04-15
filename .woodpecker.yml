@@ -4,7 +4,7 @@
 #
 # Event model:
 #   push to any branch    → build + vet + test
-#   pull_request          → build + vet + test  (CI feedback on PR)
+#   pull_request          → build + vet + test
 #   push to main (merge)  → build + vet + test + cross-compile + deploy
 
 when:
@@ -12,8 +12,9 @@ when:
 
 steps:
   - name: clone-go-common
+    # Clone go-common INTO the workspace so concurrent builds don't race over a shared ../dir
     commands:
-      - git clone http://${FORGEJO_USER}:${FORGEJO_PASSWORD}@localhost:3000/magendoo/magento2-go-common.git ../magento2-go-common
+      - git clone http://${FORGEJO_USER}:${FORGEJO_PASSWORD}@localhost:3000/magendoo/magento2-go-common.git ./go-common
     environment:
       FORGEJO_USER:
         from_secret: forgejo_user
@@ -23,11 +24,11 @@ steps:
   - name: setup-go-workspace
     commands:
       - |
-        cat > ../go.work <<'EOF'
+        cat > ./go.work <<'EOF'
         go 1.25
         use (
           .
-          ../magento2-go-common
+          ./go-common
         )
         EOF
 
