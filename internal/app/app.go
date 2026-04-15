@@ -97,6 +97,43 @@ func (a *App) Run() error {
 
 	srv.SetErrorPresenter(magentoErrorPresenter)
 
+	// Log every GraphQL operation: name, store_id, duration, and any errors.
+	// HTTP logging (middleware.LoggingMiddleware) only sees status=200 for GraphQL —
+	// this gives per-operation visibility into failures.
+	srv.AroundOperations(func(ctx context.Context, next graphql.OperationHandler) graphql.ResponseHandler {
+		oc := graphql.GetOperationContext(ctx)
+		opName := "anonymous"
+		if oc != nil && oc.OperationName != "" {
+			opName = oc.OperationName
+		}
+		storeID := middleware.GetStoreID(ctx)
+		start := time.Now()
+		respFn := next(ctx)
+		return func(ctx context.Context) *graphql.Response {
+			resp := respFn(ctx)
+			elapsed := time.Since(start)
+			if resp != nil && len(resp.Errors) > 0 {
+				errMsgs := make([]string, len(resp.Errors))
+				for i, e := range resp.Errors {
+					errMsgs[i] = e.Message
+				}
+				log.Warn().
+					Str("op", opName).
+					Int("store_id", storeID).
+					Int64("duration_ms", elapsed.Milliseconds()).
+					Strs("errors", errMsgs).
+					Msg("graphql error")
+			} else {
+				log.Debug().
+					Str("op", opName).
+					Int("store_id", storeID).
+					Int64("duration_ms", elapsed.Milliseconds()).
+					Msg("graphql ok")
+			}
+			return resp
+		}
+	})
+
 	if a.cfg.GraphQL.ComplexityLimit > 0 {
 		srv.Use(extension.FixedComplexityLimit(a.cfg.GraphQL.ComplexityLimit))
 	}

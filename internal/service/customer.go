@@ -121,27 +121,64 @@ func (s *CustomerService) GenerateToken(ctx context.Context, email, password str
 	storeID := middleware.GetStoreID(ctx)
 	websiteID, _ := s.storeRepo.GetWebsiteIDForStore(ctx, storeID)
 
+	log.Info().
+		Str("op", "GenerateToken").
+		Int("store_id", storeID).
+		Int("website_id", websiteID).
+		Msg("login attempt")
+
 	data, err := s.customerRepo.GetByEmail(ctx, email, websiteID)
 	if err != nil {
+		log.Warn().
+			Str("op", "GenerateToken").
+			Int("store_id", storeID).
+			Int("website_id", websiteID).
+			Str("reason", "customer_not_found").
+			Msg("login failed")
 		return nil, authErr
 	}
 
 	if data.IsActive != 1 {
+		log.Warn().
+			Str("op", "GenerateToken").
+			Int("customer_id", data.EntityID).
+			Int("store_id", storeID).
+			Int("is_active", data.IsActive).
+			Str("reason", "account_inactive").
+			Msg("login failed")
 		return nil, authErr
 	}
 
 	// Check account lockout (#12)
 	if err := s.checkAccountLockout(data); err != nil {
+		log.Warn().
+			Str("op", "GenerateToken").
+			Int("customer_id", data.EntityID).
+			Int("store_id", storeID).
+			Str("reason", "account_locked").
+			Msg("login failed")
 		return nil, err
 	}
 
 	// Check email confirmation — if confirmation key is set, account is unconfirmed
 	if data.Confirmation != nil && *data.Confirmation != "" {
+		log.Warn().
+			Str("op", "GenerateToken").
+			Int("customer_id", data.EntityID).
+			Int("store_id", storeID).
+			Str("reason", "email_unconfirmed").
+			Msg("login failed")
 		return nil, custerr.ErrEmailConfirmationRequired
 	}
 
 	if !repository.VerifyPassword(data.PasswordHash, password) {
 		s.recordLoginFailure(ctx, data.EntityID)
+		log.Warn().
+			Str("op", "GenerateToken").
+			Int("customer_id", data.EntityID).
+			Int("store_id", storeID).
+			Str("reason", "password_mismatch").
+			Msg("login failed")
 		return nil, authErr
 	}
 
@@ -150,8 +187,21 @@ func (s *CustomerService) GenerateToken(ctx context.Context, email, password str
 
 	token, err := s.tokenRepo.Create(ctx, data.EntityID)
 	if err != nil {
+		log.Error().
+			Err(err).
+			Str("op", "GenerateToken").
+			Int("customer_id", data.EntityID).
+			Int("store_id", storeID).
+			Str("reason", "token_creation_failed").
+			Msg("login failed")
 		return nil, fmt.Errorf("token generation failed: %w", err)
 	}
+
+	log.Info().
+		Str("op", "GenerateToken").
+		Int("customer_id", data.EntityID).
+		Int("store_id", storeID).
+		Msg("login successful")
 
 	return &model.CustomerToken{Token: &token}, nil
 }
@@ -201,24 +251,53 @@ func (s *CustomerService) IsEmailAvailable(ctx context.Context, email string) (*
 
 // CreateCustomer registers a new customer account.
 func (s *CustomerService) CreateCustomer(ctx context.Context, input model.CustomerCreateInput) (*model.CustomerOutput, error) {
-	// Validate password strength (#13)
-	if err := s.validatePassword(input.Password); err != nil {
-		return nil, err
-	}
-
 	storeID := middleware.GetStoreID(ctx)
 	websiteID, _ := s.storeRepo.GetWebsiteIDForStore(ctx, storeID)
 
+	log.Info().
+		Str("op", "CreateCustomer").
+		Int("store_id", storeID).
+		Int("website_id", websiteID).
+		Msg("registration attempt")
+
+	// Validate password strength (#13)
+	if err := s.validatePassword(input.Password); err != nil {
+		log.Warn().
+			Str("op", "CreateCustomer").
+			Int("store_id", storeID).
+			Str("reason", "password_validation_failed").
+			Err(err).
+			Msg("registration failed")
+		return nil, err
+	}
+
 	exists, err := s.customerRepo.EmailExists(ctx, input.Email, websiteID)
 	if err != nil {
+		log.Error().
+			Err(err).
+			Str("op", "CreateCustomer").
+			Int("store_id", storeID).
+			Str("reason", "email_check_error").
+			Msg("registration failed")
 		return nil, err
 	}
 	if exists {
+		log.Warn().
+			Str("op", "CreateCustomer").
+			Int("store_id", storeID).
+			Str("reason", "email_already_exists").
+			Msg("registration failed")
 		return nil, custerr.ErrEmailAlreadyExists
 	}
 
 	passwordHash, err := repository.HashPassword(input.Password)
 	if err != nil {
+		log.Error().
+			Err(err).
+			Str("op", "CreateCustomer").
+			Int("store_id", storeID).
+			Str("reason", "password_hash_error").
+			Msg("registration failed")
 		return nil, err
 	}
 
@@ -240,8 +319,22 @@ func (s *CustomerService) CreateCustomer(ctx context.Context, input model.Custom
 
 	id, err := s.customerRepo.Create(ctx, data)
 	if err != nil {
+		log.Error().
+			Err(err).
+			Str("op", "CreateCustomer").
+			Int("store_id", storeID).
+			Int("website_id", websiteID).
+			Str("reason", "db_create_error").
+			Msg("registration failed")
 		return nil, err
 	}
+
+	log.Info().
+		Str("op", "CreateCustomer").
+		Int("customer_id", id).
+		Int("store_id", storeID).
+		Int("website_id", websiteID).
+		Msg("registration successful")
 
 	// Handle newsletter subscription (only if newsletter module is active)
 	if input.IsSubscribed != nil && *input.IsSubscribed {
