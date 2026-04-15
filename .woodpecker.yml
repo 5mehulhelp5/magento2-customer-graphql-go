@@ -1,0 +1,66 @@
+---
+# Pipeline for magento2-customer-graphql-go
+# Runs on the Mac local agent (no Docker) — WOODPECKER_BACKEND=local
+# Requires: FORGEJO_USER, FORGEJO_PASSWORD secrets in Woodpecker
+# Deploy steps run on main branch only and require SSH alias "deploy" configured on the agent host
+
+when:
+  - event: push
+
+steps:
+  - name: clone-go-common
+    commands:
+      - git clone http://${FORGEJO_USER}:${FORGEJO_PASSWORD}@localhost:3000/magendoo/magento2-go-common.git ../magento2-go-common
+    environment:
+      FORGEJO_USER:
+        from_secret: forgejo_user
+      FORGEJO_PASSWORD:
+        from_secret: forgejo_password
+
+  - name: setup-go-workspace
+    commands:
+      - |
+        cat > ../go.work <<'EOF'
+        go 1.25
+        use (
+          .
+          ../magento2-go-common
+        )
+        EOF
+
+  - name: build
+    commands:
+      - GOTOOLCHAIN=auto go build ./...
+
+  - name: vet
+    commands:
+      - GOTOOLCHAIN=auto go vet ./...
+
+  - name: test
+    commands:
+      - GOTOOLCHAIN=auto go test ./tests/ -run "^Test[^C]" -v -timeout 60s -count=1
+    when:
+      - event: push
+
+  - name: cross-compile
+    commands:
+      - GOOS=linux GOARCH=arm64 CGO_ENABLED=0 GOTOOLCHAIN=auto go build -buildvcs=false -o customer-server-new ./cmd/server/
+    when:
+      - branch: [main, master]
+
+  - name: deploy
+    commands:
+      - scp customer-server-new deploy:/tmp/customer-server
+      - ssh deploy "
+          set -e
+          BINS=/srv/magendoo/bins
+          [ -f \$BINS/customer ] && cp \$BINS/customer \$BINS/customer.bak
+          cp /tmp/customer-server \$BINS/customer.new
+          chmod +x \$BINS/customer.new
+          mv \$BINS/customer.new \$BINS/customer
+          systemctl restart magendoo-customer
+          sleep 3
+          systemctl is-active magendoo-customer && echo 'deploy ok' || (echo 'FAILED — rolling back'; cp \$BINS/customer.bak \$BINS/customer; systemctl restart magendoo-customer; exit 1)
+        "
+    when:
+      - branch: [main, master]
